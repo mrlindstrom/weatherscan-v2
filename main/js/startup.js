@@ -175,6 +175,11 @@ requestAnimationFrame(animate);
 
     updateCrawls()
 
+    //the ski package only plays during ski.season (month-day, and it can wrap past new year);
+    //a #package=ski card jump still adds it back below
+    if (!inSkiSeason(systemSettings.ski && systemSettings.ski.season)) {
+      systemSettings.packageSettings = systemSettings.packageSettings.filter(function (p) { return p != "ski" })
+    }
     if (traf_key == "nada" || traf_key == "") {
       function fl(id) {
         return id != "traffic"
@@ -344,4 +349,17 @@ function jsonsaveButton() {
   document.body.appendChild(downloadAnchorNode); // required for firefox
   downloadAnchorNode.click();
   downloadAnchorNode.remove();
+}
+
+//true when today falls in a {start: "MM-DD", end: "MM-DD"} range, or when no valid range is set
+function inSkiSeason(season, today) {
+  var parse = function (text) {
+    var m = /^(\d{1,2})-(\d{1,2})$/.exec(String(text || "").trim());
+    return m ? Number(m[1]) * 100 + Number(m[2]) : null;
+  };
+  var start = season && parse(season.start), end = season && parse(season.end);
+  if (start == null || end == null) { return true }
+  today = today || new Date();
+  var now = (today.getMonth() + 1) * 100 + today.getDate();
+  return start <= end ? (now >= start && now <= end) : (now >= start || now <= end);
 }

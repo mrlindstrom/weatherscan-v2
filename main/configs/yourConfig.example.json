@@ -31,7 +31,7 @@
             "order":[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33],
             "cantoreNarrations":false
         },
-        "packageSettings":["forecast","health","extralocal","traffic","travel", "airport","extralocal","minicoreone","garden","golf","beach","international"],
+        "packageSettings":["forecast","health","extralocal","traffic","travel", "airport","extralocal","minicoreone","garden","golf","ski","beach","international"],
         "severePackageSettings":["severeA","severeB"],
         "severePackageName":"SEVERE WEATHER MESSAGE",
         "LBar": {
@@ -436,6 +436,7 @@
         },
         "ski": {
           "packageName":"SKI",
+          "season": { "start":"11-15", "end":"04-15" },
           "resorts": [
             { "displayName": "Snowshow Mountain", "state": "WV", "resortId": "304001" },
             { "displayName": "Baker Mountain", "state": "ME", "resortId": "207024" },

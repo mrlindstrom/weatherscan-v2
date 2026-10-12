@@ -34,10 +34,11 @@ Need support beyond the scope of this README? A guide for configuring this simul
 4. If you want the traffic segment, put a *TomTom* API key in `traf_key` (line 7). Keys are free at [developer.tomtom.com](https://developer.tomtom.com) with no credit card; the free plan refuses requests past its daily allowance rather than billing, and the simulator stops itself at 2,000 requests a day. Again, this is optional and only if you want the traffic segment - leaving it blank will erase the traffic segment from your lineup cleanly.
    - Each route in `traffic.routes` names its sign in `routeIcon`. That can be any image in `main/images/roadSigns` (without `.png`), or a name like `interstate_95`, `usRoute_66` or `stateRoute_1`, which is drawn on the matching blank sign when there's no image by that name.
 5. The beach package's water temperature map reads NOAA CoastWatch, which doesn't allow browser requests from other sites. To show it, set `corsProxy` (line 10) to the URL of a [CORS Anywhere](https://github.com/Rob--W/cors-anywhere) instance you run. Left blank, that one card shows as unavailable.
-6. Save your changes to `yourConfig.json` and close it.
-7. In the terminal / command prompt within the main directory, run `npm install --production`. This will install all dependencies required to run the simulator
-8. In the terminal / command prompt within the main directory, run `npm start`. This will spin up a local web server on port 3000 by default (set the `PORT` environment variable to use another one).
-9. Visit http://localhost:3000 to view the simulator.
+6. The ski package only plays during `ski.season`, given as month-day dates (`"start":"11-15", "end":"04-15"`); the range can wrap past New Year. Remove `season` or leave its dates blank to play ski all year.
+7. Save your changes to `yourConfig.json` and close it.
+8. In the terminal / command prompt within the main directory, run `npm install --production`. This will install all dependencies required to run the simulator
+9. In the terminal / command prompt within the main directory, run `npm start`. This will spin up a local web server on port 3000 by default (set the `PORT` environment variable to use another one).
+10. Visit http://localhost:3000 to view the simulator.
 
 # Jumping to and holding cards
 

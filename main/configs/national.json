@@ -1494,6 +1494,7 @@
           "locationID":""
         },
         "ski": {
+          "season": { "start":"11-15", "end":"04-15" },
           "resorts": [
             { "displayName": "Snowshow Mountain", "state": "WV", "resortId": "304001" },
             { "displayName": "Baker Mountain", "state": "ME", "resortId": "207024" },
