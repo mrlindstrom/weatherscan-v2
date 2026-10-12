@@ -238,6 +238,7 @@ async function getNearbyCities() {
 
     async function createNewNearbyCity(icao) {
         var locName, dontPush;
+        if (!isAirportCode(icao)) { return }
         try {
             const data = await $.getJSON(`https://api.weather.com/v3/location/point?icaoCode=${icao}&language=en-US&format=json&apiKey=${systemSettings.apiKeys.api_key}`)
             locName = data.location.displayName.replace(" Charter Township", "").replace(" Township", "");
@@ -262,6 +263,12 @@ async function getNearbyCities() {
     await grabNearbyCities(systemSettings.mainCity.lat, systemSettings.mainCity.lon)
 }
 
+//weather.com's nearby observation stations include some that aren't airports (like NCHT2), which its
+//icaoCode lookup answers with a 400, so only four-letter airport codes are looked up
+function isAirportCode(id) {
+    return /^[A-Z]{4}$/.test(id);
+}
+
 async function getExtraCities() {
     systemSettings.extraCity.cities = []
     async function grabExtraCities(lat, lon) {
@@ -277,6 +284,7 @@ async function getExtraCities() {
 
     async function createNewExtraCity(icao, dist) {
         var extraCityObj, dontPush = false;
+        if (!isAirportCode(icao)) { return }
         try {
         const data = await $.getJSON(`https://api.weather.com/v3/location/point?icaoCode=${icao}&language=en-US&format=json&apiKey=${systemSettings.apiKeys.api_key}`)
 

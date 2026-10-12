@@ -1184,7 +1184,7 @@ img#mist-logo {
     position: absolute;
     top: 900px;
     left: 504px;
-    background-image: url("images/misc/tickerArrow.png"), linear-gradient(to left, rgba(53,53,53,0) 0, rgba(53,53,53, 1) 39px 100%);
+    background-image: linear-gradient(to left, rgba(53,53,53,0) 0, rgba(53,53,53, 1) 39px 100%);
     z-index: 1;
     height: 41.5px;
 }

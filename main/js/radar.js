@@ -1,4 +1,9 @@
 var mapStyle = "mapbox://styles/colster/cmiccqynn00as01s4bt6501il";
+//the echo maps only draw radar layers, so they start from an empty style. mapStyle's own layers were all
+//hidden there, and three of its tilesets no longer load (the "Ve" 404 errors in the console).
+//it's a file rather than an inline object: mapbox finishes an inline style on the next animation frame,
+//which a background tab never gets, and the radar layers are added before that
+var echoStyle = new URL("maps/empty-style.json", window.location.href).href;
 var satZoom = 5;
 //local radar variables
 var locradar, satmap, satAmenities, locradarAmenities, locradarAmenitiesTrans, radarEchoes, satEchoes, miniradar, miniradarAmenitiesTrans, miniEchoes;
@@ -196,29 +201,12 @@ async function initializeRadars() {
 
   miniEchoes = new mapboxgl.Map({
     container: 'mini-echoes', // container id
-    style: mapStyle,
+    style: echoStyle,
     center: [systemSettings.LBar.radar.lon, systemSettings.LBar.radar.lat],
     zoom: systemSettings.LBar.radar.zoom,
     trackResize: false
   });
   miniEchoes.on('load', function () {
-    miniEchoes.setLayoutProperty('background', 'visibility', 'none');//ocean
-    miniEchoes.setLayoutProperty('hawaii local', 'visibility', 'none');//hawaii mercator
-    miniEchoes.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
-    miniEchoes.setLayoutProperty('alaska', 'visibility', 'none');//alaska
-    miniEchoes.setLayoutProperty('conus merc', 'visibility', 'none');//conus mercator
-    miniEchoes.setLayoutProperty('conus sat', 'visibility', 'none');//conus lambert
-    miniEchoes.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'none');//county lines
-    miniEchoes.setLayoutProperty('cb-2019-us-state-20m-nocoast-7m1rrd', 'visibility', 'none');//state lines
-    miniEchoes.setLayoutProperty('i2-coastlines-conus-ak-hi-06wtga', 'visibility', 'none');//coastlines
-    miniEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'none');//black roads
-    miniEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'none');//gray roads
-    miniEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (2)', 'visibility', 'none');
-    miniEchoes.setLayoutProperty('place-label', 'visibility', 'none');
-    miniEchoes.setLayoutProperty('place-label copy', 'visibility', 'none');
-    miniEchoes.setLayoutProperty('airport-label', 'visibility', 'none');
-    miniEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (4)', 'visibility', 'none');
-    miniEchoes.setLayoutProperty('country-boundaries', 'visibility', 'none');
   });
   miniEchoes.on('error', (e) =>{
     // if(String(e.error).startsWith("Error: IDs can't be empty.")){
@@ -233,7 +221,7 @@ async function initializeRadars() {
   locradar = new mapboxgl.Map({
     container: 'radar-basemap', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
-    center: [0, 0],
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
     zoom: 7.2,
     trackResize: false
   });
@@ -261,7 +249,7 @@ async function initializeRadars() {
   satmap = new mapboxgl.Map({
     container: 'sat-basemap', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
-    center: [0, 0],
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
     zoom: satZoom,
     trackResize: false,
     projection: {
@@ -293,35 +281,18 @@ async function initializeRadars() {
 
   radarEchoes = new mapboxgl.Map({
     container: 'radar-echoes', // container id
-    style: mapStyle,
-    center: [0, 0],
+    style: echoStyle,
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
     zoom: 7.2,
     trackResize: false
   });
   radarEchoes.on('load', function () {
-    radarEchoes.setLayoutProperty('background', 'visibility', 'none');//ocean
-    radarEchoes.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
-    radarEchoes.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
-    radarEchoes.setLayoutProperty('alaska', 'visibility', 'none');//alaska
-    radarEchoes.setLayoutProperty('conus merc', 'visibility', 'none');//conus mercator
-    radarEchoes.setLayoutProperty('conus sat', 'visibility', 'none');//conus lambert
-    radarEchoes.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'none');//county lines
-    radarEchoes.setLayoutProperty('cb-2019-us-state-20m-nocoast-7m1rrd', 'visibility', 'none');//state lines
-    radarEchoes.setLayoutProperty('i2-coastlines-conus-ak-hi-06wtga', 'visibility', 'none');//coastlines
-    radarEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'none');//black roads
-    radarEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'none');//gray roads
-    radarEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (2)', 'visibility', 'none');
-    radarEchoes.setLayoutProperty('place-label', 'visibility', 'none');
-    radarEchoes.setLayoutProperty('place-label copy', 'visibility', 'none');
-    radarEchoes.setLayoutProperty('airport-label', 'visibility', 'none');
-    radarEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (4)', 'visibility', 'none');
-    radarEchoes.setLayoutProperty('country-boundaries', 'visibility', 'none');
   });
 
   satEchoes = new mapboxgl.Map({
     container: 'sat-echoes', // container id
-    style: mapStyle,
-    center: [0, 0],
+    style: echoStyle,
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
     zoom: satZoom,
     trackResize: false,
     projection: {
@@ -331,29 +302,12 @@ async function initializeRadars() {
     },
   });
   satEchoes.on('load', function () {
-    satEchoes.setLayoutProperty('background', 'visibility', 'none');//ocean
-    satEchoes.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
-    satEchoes.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
-    satEchoes.setLayoutProperty('alaska', 'visibility', 'none');//alaska
-    satEchoes.setLayoutProperty('conus merc', 'visibility', 'none');//conus mercator
-    satEchoes.setLayoutProperty('conus sat', 'visibility', 'none');//conus lambert
-    satEchoes.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'none');//county lines
-    satEchoes.setLayoutProperty('cb-2019-us-state-20m-nocoast-7m1rrd', 'visibility', 'none');//state lines
-    satEchoes.setLayoutProperty('i2-coastlines-conus-ak-hi-06wtga', 'visibility', 'none');//coastlines
-    satEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'none');//black roads
-    satEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'none');//gray roads
-    satEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (2)', 'visibility', 'none');
-    satEchoes.setLayoutProperty('place-label', 'visibility', 'none');
-    satEchoes.setLayoutProperty('place-label copy', 'visibility', 'none');
-    satEchoes.setLayoutProperty('airport-label', 'visibility', 'none');
-    satEchoes.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (4)', 'visibility', 'none');
-    satEchoes.setLayoutProperty('country-boundaries', 'visibility', 'none');
   });
 
   satAmenities = new mapboxgl.Map({
     container: 'sat-amenities', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
-    center: [0, 0],
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
     zoom: satZoom,
     trackResize: false,
     projection: {
@@ -388,14 +342,14 @@ async function initializeRadars() {
   });
   locradarAmenities = new mapboxgl.Map({
     container: 'radar-amenities', // container id
-    style: mapStyle,
-    center: [0, 0],
+    style: legacyMaps ? echoStyle : mapStyle,
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
     zoom: 7.2,
     trackResize: false
   });
   locradarAmenities.on('load', function () {
     //the legacy basemap already has roads and county lines under the echoes
-    if (legacyMaps) { hideAllLayers(locradarAmenities); return }
+    if (legacyMaps) { return }
     locradarAmenities.setLayoutProperty('background', 'visibility', 'none');//ocean
     locradarAmenities.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
     locradarAmenities.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
@@ -424,7 +378,7 @@ async function initializeRadars() {
   locradarAmenitiesTrans = new mapboxgl.Map({
     container: 'radar-amenities-trans', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
-    center: [0, 0],
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
     zoom: 7.2,
     trackResize: false
   });
@@ -457,7 +411,7 @@ async function initializeRadars() {
     trafficMap = new mapboxgl.Map({
       container: 'trafmap',
       style: "mapbox://styles/colster/cmrgo0laa007z01s7bpym4u63",
-      center: [0, 0],
+      center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
       zoom: 7.2,
       trackResize: false,
       interactive: false
