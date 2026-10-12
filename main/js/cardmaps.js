@@ -144,9 +144,10 @@ function showCardMap(card) {
   var national = mapCards[card].national == true;
   cardMap.setProjection(national ? cardMapNationalProjection : 'mercator');
   cardMap.jumpTo(national ? cardMapNationalView : { center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat], zoom: cardMapZoom });
-  legacyCityLayers.concat(['country-label']).forEach(function (layer) {
+  legacyCityLayers.forEach(function (layer) {
     cardMap.setLayoutProperty(layer, 'visibility', national ? 'none' : 'visible');
   });
+  cardMap.setLayoutProperty('country-label', 'visibility', !national && countryLabelsShown() ? 'visible' : 'none');
   //maps measure themselves wrong while #slides is scaled
   setTimeout(() => {
     var scale = $("#slides").css("scale");

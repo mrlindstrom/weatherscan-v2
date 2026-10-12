@@ -23,7 +23,8 @@
               "adCrawl": false,
               "ccTicker": false
             },
-            "weatherReadyLogo": 3
+            "weatherReadyLogo": 3,
+            "countryLabels": false
         },
         "audioSettings":{
             "enableMusic":true,

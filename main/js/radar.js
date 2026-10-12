@@ -144,10 +144,17 @@ function hideAllLayers(map) {
   });
 }
 //mapbox only takes an absolute sprite URL, so the style file's relative one is resolved against this page
+function countryLabelsShown() {
+  return systemSettings.appearanceSettings.countryLabels == true;
+}
 async function loadLegacyStyle() {
   if (!legacyMaps || typeof legacyStyle != "string") { return }
   var style = await (await fetch(legacyStyle)).json();
   style.sprite = new URL(style.sprite, window.location.href).href;
+  //country names ("United States") only when appearanceSettings.countryLabels is on
+  style.layers.filter(function (layer) { return layer.id == 'country-label' }).forEach(function (layer) {
+    layer.layout = Object.assign({}, layer.layout, { visibility: countryLabelsShown() ? 'visible' : 'none' });
+  });
   legacyStyle = style;
   //the label maps draw their text from these page fonts, so they have to be loaded first
   await Promise.all(Object.values(legacyLabelFonts).map(function (family) {

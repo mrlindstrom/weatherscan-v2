@@ -29,7 +29,8 @@ var systemSettings = {
     version: "1.0",
     backgroundImage:"wxscan_default_bg_new",
     condensedCrawlFont: false,
-    weatherReadyLogo: 1
+    weatherReadyLogo: 1,
+    countryLabels: false //country names like "United States" on the maps
   },
   audioSettings: {
     enableMusic: true,
