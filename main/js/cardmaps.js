@@ -368,12 +368,20 @@ async function loadGolfIndex() {
   try {
     var b = cardMapBounds();
     var results = await fetchAggregate("v2idxGolfDaypart15", cardMapGridPoints(golfGrid, b));
-    //the next daytime period (golf has no nighttime index)
-    var first = results[0].v2idxGolfDaypart15.golfIndex12hour;
-    var part = first.golfIndex.findIndex(function (value) { return value != null });
-    var values = results.map(function (result) {
-      var index = result.v2idxGolfDaypart15 && result.v2idxGolfDaypart15.golfIndex12hour.golfIndex[part];
-      return index == null ? null : index;
+    //golf has no nighttime index, and each point's list starts at its own current daypart ("Today" where it's
+    //still daytime, "Tonight" where it's evening), so the same slot is a different day from point to point.
+    //match by date instead: the next day every point has a daytime index for
+    var forecasts = results.map(function (result) { return result.v2idxGolfDaypart15 && result.v2idxGolfDaypart15.golfIndex12hour });
+    var dayOf = function (forecast, i) { return forecast.fcstValidLocal[i].slice(0, 10) };
+    var day = forecasts.reduce(function (latest, forecast) {
+      if (!forecast) { return latest }
+      var i = forecast.golfIndex.findIndex(function (value) { return value != null });
+      return i == -1 || dayOf(forecast, i) <= latest ? latest : dayOf(forecast, i);
+    }, "");
+    var values = forecasts.map(function (forecast) {
+      if (!forecast) { return null }
+      var i = forecast.golfIndex.findIndex(function (value, j) { return value != null && dayOf(forecast, j) == day });
+      return i == -1 ? null : forecast.golfIndex[i];
     });
     var url = gridImage(values, golfGrid, b, golfIndexColor);
     var coordinates = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
@@ -390,7 +398,9 @@ async function loadGolfIndex() {
       if (water.filter) { waterMask.filter = water.filter }
       cardMap.addLayer(waterMask, 'hillshade');
     }
-    $(".golf-index .legend .day").text(dateFns.format(new Date(first.fcstValidLocal[part]), "EEEE"));
+    //noon that day, so the time zone can't push it to the day before
+    $(".golf-index .legend .day").text(dateFns.format(new Date(day + "T12:00:00"), "EEEE"));
+    if (activeMapCard == 'golfIndex') { $(".tempunavailable").fadeOut(500) }
     weatherData.golfIndexUnavailable = false;
   } catch (error) {
     console.error("golf index map", error);
