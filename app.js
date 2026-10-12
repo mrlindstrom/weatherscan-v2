@@ -2,6 +2,13 @@ const express = require('express');
 const path = require('path');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const app = express();
+//settings like PORT=3003 can go in a .env file next to app.js (node 20.12+); a variable already set in the
+//environment wins over the file
+try {
+    if (process.loadEnvFile) { process.loadEnvFile(path.join(__dirname, '.env')) }
+} catch (error) {
+    if (error.code != 'ENOENT') { console.error(".env:", error.message) }
+}
 const port = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, 'main')));

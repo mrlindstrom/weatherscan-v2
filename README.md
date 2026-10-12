@@ -37,7 +37,7 @@ Need support beyond the scope of this README? A guide for configuring this simul
 6. The ski package only plays during `ski.season`, given as month-day dates (`"start":"11-15", "end":"04-15"`); the range can wrap past New Year. Remove `season` or leave its dates blank to play ski all year.
 7. Save your changes to `yourConfig.json` and close it.
 8. In the terminal / command prompt within the main directory, run `npm install --production`. This will install all dependencies required to run the simulator
-9. In the terminal / command prompt within the main directory, run `npm start`. This will spin up a local web server on port 3000 by default (set the `PORT` environment variable to use another one).
+9. In the terminal / command prompt within the main directory, run `npm start`. This will spin up a local web server on port 3000 by default. To use another port, put a line like `PORT=3003` in a `.env` file next to `app.js` (it's gitignored), or set the `PORT` environment variable.
 10. Visit http://localhost:3000 to view the simulator.
 
 # Jumping to and holding cards
