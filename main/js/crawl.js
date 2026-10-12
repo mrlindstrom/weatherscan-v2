@@ -1,13 +1,19 @@
 var crawlIndex = 0;
+//emoji come from the system emoji font, whose taller line pushed the crawl text down and clipped it.
+//each one (with its skin tone, variation selector or joined parts, or a flag pair) gets an .emoji span that can't grow the line.
+var crawlEmojiPattern = /(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier})*(?:‍\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier})*)*|[#*0-9]️?⃣)/gu;
+function crawlHTML(text) {
+    return $("<div>").text(text).html().replace(crawlEmojiPattern, '<span class="emoji">$&</span>');
+}
 function adCrawl(crawlDuration, customCrawl, adIndex) {
     $(".normal-lowerarea").fadeIn(0)
     $(".normal-lowerarea .crawl").marquee('destroy')
     if(customCrawl == true && systemSettings.appearanceSettings.adImages[adIndex].adMessage != undefined){
-        $(".normal-lowerarea .crawl span").text(systemSettings.appearanceSettings.adImages[adIndex].adMessage);
+        $(".normal-lowerarea .crawl > span").html(crawlHTML(systemSettings.appearanceSettings.adImages[adIndex].adMessage));
     }else{
-        $(".normal-lowerarea .crawl span").text(systemSettings.appearanceSettings.adMessage[crawlIndex])
+        $(".normal-lowerarea .crawl > span").html(crawlHTML(systemSettings.appearanceSettings.adMessage[crawlIndex]))
     }
-    var crawlWidth = $(".normal-lowerarea .crawl span").width();
+    var crawlWidth = $(".normal-lowerarea .crawl > span").width();
     var crawlTime = (1116 + crawlWidth)/189
     var repeat = Math.floor((crawlDuration/1000)/crawlTime)
     var crawlSpeed = (repeat * (1116 + crawlWidth))/((crawlDuration+175)/1000)

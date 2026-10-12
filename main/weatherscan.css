@@ -1217,6 +1217,13 @@ img#mist-logo {
 .normal-lowerarea .crawl .js-marquee {
     color: rgba(20, 20, 20, 255);
 }
+/* emoji in the ad crawl (see crawlHTML): sized to the text, and line-height 0 so the emoji font's taller line
+   doesn't push the text down out of the crawl */
+.normal-lowerarea .crawl .emoji {
+    font-size: 0.85em;
+    line-height: 0;
+    vertical-align: 0.05em;
+}
 .severe-lowerarea .header-background {
     position: absolute;
     top: 900px;
