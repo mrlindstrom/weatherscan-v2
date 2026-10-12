@@ -207,6 +207,15 @@ requestAnimationFrame(animate);
       console.error(error)
     }
 
+    //inland, the beach auto-find comes back with no coastal zone, buoy or tide stations; drop the package
+    //rather than play a set of "No Report" cards, unless a #package=beach card jump asked for it
+    var beach = systemSettings.beach
+    if (systemSettings.packageSettings.includes("beach") && !beach.coastalForecast.zone && !beach.surfReport.buoy && beach.tides.stations.length == 0 && !(cardJump.start && cardJump.start.package == "beach")) {
+      console.log("no coast near " + systemSettings.mainCity.locationName + ", leaving out the beach package")
+      systemSettings.packageSettings = systemSettings.packageSettings.filter(function (p) { return p != "beach" })
+      slideSettings.order[0].slideLineup = slideSettings.order[0].slideLineup.filter(function (g) { return g.group != "beach" })
+    }
+
     console.log("weatherData", weatherData)
 
     for (let i = 0; i < systemSettings.LBar.locations.cities.length; i++){

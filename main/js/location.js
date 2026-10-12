@@ -784,6 +784,26 @@ async function locationJS() {
 //boat & beach: fills in whichever of the buoy, coastal zone, tide stations and sunrise/sunset airport
 //are left blank in the config. the buoy and tide stations are picked near the coast (the closest point
 //of the nearest coastal waters zone) rather than near the city, which can be well inland or up a ship channel.
+//nearshore ocean zones go by "Coastal waters from...", "Inner waters from..." or "... out 20 NM";
+//offshore ones by "... 20 to 60 NM" or "... 10-60 NM"
+function isNearshoreZone(name) {
+    return /coastal waters|inner waters|\bout (to )?\d+ ?nm\b/i.test(name) && !/\d+ ?(to|-) ?\d+ ?nm/i.test(name);
+}
+//"Coastal waters from High Island to Freeport TX out 20 NM" -> "High Island to Freeport",
+//"Inner waters from Point Mugu to San Mateo Pt. CA including Santa Catalina..." -> "Point Mugu to San Mateo Pt."
+function shortZoneName(name) {
+    return name
+        .replace(/^(coastal |inner )?waters (from )?/i, '')
+        .replace(/\s+including\b.*$/i, '')
+        .replace(/,\s[A-Z]{2}\b/g, '')
+        .replace(/\s+[A-Z]{2}\s+(out|from)\b.*$/, '')
+        .replace(/\s+(and\s+)?out\b.*$/i, '')
+        .replace(/\s+from \d+.*$/i, '')
+        .replace(/\s[A-Z]{2}\sto\s/, ' to ')
+        .replace(/\s[A-Z]{2}$/, '')
+        .replace(/\s+(California|Oregon|Washington|Alaska|Hawaii)$/, '');
+}
+
 var beachAutoFound = false;
 var marineZonesURL = "https://mapservices.weather.noaa.gov/static/rest/services/nws_reference_maps/nws_reference_map/MapServer/5/query";
 var tideStationsURL = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions";
@@ -799,7 +819,7 @@ async function autoFindBeach() {
         return Math.hypot((a[0] - b[0]) * Math.cos(b[1] * Math.PI / 180), a[1] - b[1]) * 69;
     };
 
-    //coastal zone: the nearest "coastal waters" zone, or the nearest of any kind (lakes, bays) if there isn't one
+    //coastal zone: the nearest zone on the open coast, or the nearest of any kind (sounds, lakes, bays) if there isn't one
     var coast = home;
     try {
         var params = new URLSearchParams({
@@ -819,21 +839,15 @@ async function autoFindBeach() {
             walk(zone.geometry.coordinates);
         });
         zones.sort(function (a, b) { return a.distance - b.distance });
-        var zone = zones.find(function (z) { return /coastal waters/i.test(z.properties.name) }) || zones[0];
+        var zone = zones.find(function (z) { return isNearshoreZone(z.properties.name) }) || zones[0];
         if (zone) {
             coast = zone.closest;
             if (beach.coastalForecast.office == "" && beach.coastalForecast.zone == "") {
                 beach.coastalForecast.office = zone.properties.wfo;
                 beach.coastalForecast.zone = zone.properties.id;
-                //grouped zones share their header's name lines, so use this zone's own name, shortened to fit the
-                //card header: "Coastal waters from High Island to Freeport TX out 20 NM" -> "High Island to Freeport"
+                //grouped zones share their header's name lines, so use this zone's own name, shortened to fit the card header
                 if (beach.coastalForecast.zoneName == "") {
-                    beach.coastalForecast.zoneName = zone.properties.name
-                        .replace(/^(coastal )?waters (from )?/i, '')
-                        .replace(/\s+[A-Z]{2}\s+(out|from)\b.*$/, '')
-                        .replace(/\s+(out|from) \d+.*$/i, '')
-                        .replace(/\s[A-Z]{2}\sto\s/, ' to ')
-                        .replace(/\s[A-Z]{2}$/, '');
+                    beach.coastalForecast.zoneName = shortZoneName(zone.properties.name);
                 }
             }
         }

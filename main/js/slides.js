@@ -3387,3 +3387,28 @@ function headerRefresh() {
     }, 50)
   })
 }
+
+//header text too long for the space beside the card title (some coastal zone names) shrinks until it clears
+//the title instead of running into it. both are shared by every card, so it's refit whenever either changes.
+function fitHeaderText() {
+  var header = document.querySelector('.headertext'), title = document.querySelector('.titletext');
+  if (!header || !title) { return }
+  header.style.fontSize = '';
+  header.style.paddingTop = '';
+  if (!header.offsetHeight) { return }
+  var full = parseFloat(getComputedStyle(header).fontSize), size = full;
+  var gap = 15 * header.getBoundingClientRect().height / header.offsetHeight;
+  while (size > 24 && header.textContent && title.textContent &&
+    header.getBoundingClientRect().left < title.getBoundingClientRect().right + gap) {
+    size -= 1;
+    header.style.fontSize = size + 'px';
+    //keep the smaller text on the same baseline
+    header.style.paddingTop = ((full - size) * 0.75) + 'px';
+  }
+}
+$(function () {
+  var refit = new MutationObserver(function () { requestAnimationFrame(fitHeaderText) });
+  document.querySelectorAll('.headertext, .titletext').forEach(function (el) {
+    refit.observe(el, { childList: true, characterData: true, subtree: true });
+  });
+});
