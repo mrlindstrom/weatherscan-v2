@@ -53,6 +53,7 @@ These go after a `#` at the end of the URL, since the `?` part is the location (
 | `#card=dopplerRadar` | Start on that card, in the first package that has it. |
 | `&package=extralocal` | Pick the package, for cards that are in more than one (`currentConditions`, `extendedForecast` and so on). If your config's `packageSettings` doesn't include that package, it's added for that page load only. |
 | `&hold` | Keep replaying the card instead of moving on. |
+| `alert=Tornado Warning` | Start with a simulated alert active (see below). Separate several with commas. |
 
 Examples:
 
@@ -73,6 +74,19 @@ Open the browser's developer tools (F12) and use these in the console:
 | `weatherscan.jump("almanac", {now: true})` | Reloads straight onto the card right away. |
 | `weatherscan.hold()` | Stops advancing past the current card. |
 | `weatherscan.release()` | Resumes the normal rotation. |
+
+### Simulating severe weather
+
+The sim can pretend the main location has active alerts, so you can see the alert crawl, warning beep, Weather Bulletin and severe weather lineup without waiting for real weather. Only the sim's own alert requests for the main location are answered with made-up alerts; every simulated alert's text says it's a test.
+
+| Command | What it does |
+|---|---|
+| `weatherscan.alert("Tornado Warning")` | Adds a simulated alert. The crawl switches right away; for a severe alert type the severe lineup starts at the next package. |
+| `weatherscan.alert("Winter Storm Warning", {text: "..."})` | The same, with your own crawl text. |
+| `weatherscan.alertTypes()` | Lists every alert name the sim knows, and which ones are severe. |
+| `weatherscan.clearAlerts()` | Removes the simulated alerts and goes back to real ones. |
+
+To start with alerts already active, add `alert=` to the URL, for example `http://localhost:3000/?90210#alert=Tornado Warning,Flash Flood Warning`.
 
 ### Card names
 

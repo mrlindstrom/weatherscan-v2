@@ -398,7 +398,7 @@ async function getCoreData() {
             if ((warningSettings[eventDesc].severe && eventDesc != alertEvent) || !warningSettings[eventDesc].severe) {
               var duplicate = false
               for (var ii = 0; ii < array.length; ii++) {
-                if (array[ii].includes(eventDesc)) duplicate = true;
+                if (array[ii].type == eventDesc) duplicate = true;
               }
               if (!duplicate) {
                 array.push({type: eventDesc, desc: data.alerts[i].headlineText})
@@ -419,7 +419,7 @@ async function getCoreData() {
       var atext = ""
       $(".gbul .alerts").text("")
       for (var i = 0; i < weatherData.alerts.mainLoc.warnings.length; i++) {
-        atext = atext + weatherData.alerts.mainLoc.warnings[i] + " " + "\n\n"
+        atext = atext + weatherData.alerts.mainLoc.warnings[i].desc + " " + "\n\n"
       }
       $(".gbul .alerts").text(atext.slice(0, -2))
       weatherData.alerts.mainLoc.pages = Math.ceil($(".gbul .alerts").height() / 534)
