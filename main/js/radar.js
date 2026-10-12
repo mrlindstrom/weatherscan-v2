@@ -26,7 +26,7 @@ var legacyMaps = true;
 //loadLegacyStyle() swaps this URL for the loaded style before any map is made
 var legacyStyle = "maps/legacy/style.json";
 //the "copy" layers are the drop shadows for the labels
-var legacyCityLayers = ['settlement-minor-label copy', 'settlement-major-label copy', 'settlement-minor-label', 'settlement-major-label'];
+var legacyCityLayers = ['settlement-minor-label copy', 'settlement-major-label copy', 'settlement-minor-label', 'settlement-major-label', 'main-city-label'];
 var legacyOverlayLayers = legacyCityLayers.concat([
   'admin-2-boundary-bg', 'admin-1-boundary-bg', 'admin-0-boundary-bg',
   'admin-2-boundary', 'admin-1-boundary', 'admin-0-boundary', 'admin-0-boundary-disputed', 'country-boundaries',
@@ -144,6 +144,33 @@ function hideAllLayers(map) {
   });
 }
 //mapbox only takes an absolute sprite URL, so the style file's relative one is resolved against this page
+//the main city keeps its dot and name when bigger neighbors would crowd it out: a copy of the city label layer
+//showing only the map's own label for it, on top of the style so it's placed first and wins any collision.
+//same tiles, size and look as every other city. it's in legacyCityLayers, so it's styled and shown with them.
+//no shadow copy: the other cities' shadow layers lose the collision with their own names, so none of them show one.
+//where the map's tiles leave the town out (small towns on the zoomed-out card maps), there's nothing to show
+function addMainCityLabel(style) {
+  var name = systemSettings.mainCity.locationName;
+  //near the main city too, since names repeat (there's a Natchez in Louisiana as well as Mississippi)
+  var lon = Number(systemSettings.mainCity.lon), lat = Number(systemSettings.mainCity.lat), r = 0.2;
+  var nearby = { type: 'Polygon', coordinates: [[[lon - r, lat - r], [lon + r, lat - r], [lon + r, lat + r], [lon - r, lat + r], [lon - r, lat - r]]] };
+  ['settlement-minor-label'].forEach(function (id) {
+    var layer = JSON.parse(JSON.stringify(style.layers.find(function (l) { return l.id == id })));
+    layer.id = 'main-city-label';
+    //any rank or zoom the tiles have it at, rather than only the ranks the style shows at each zoom
+    layer.filter = ['all',
+      ['match', ['get', 'class'], ['settlement', 'disputed_settlement'], true, false],
+      ['match', ['get', 'worldview'], ['all', 'US'], true, false],
+      ['==', ['coalesce', ['get', 'name_en'], ['get', 'name']], name],
+      ['within', nearby]
+    ];
+    delete layer.minzoom;
+    delete layer.maxzoom;
+    layer.layout['text-allow-overlap'] = true;
+    layer.layout['icon-allow-overlap'] = true;
+    style.layers.push(layer);
+  });
+}
 function countryLabelsShown() {
   return systemSettings.appearanceSettings.countryLabels == true;
 }
@@ -155,6 +182,7 @@ async function loadLegacyStyle() {
   style.layers.filter(function (layer) { return layer.id == 'country-label' }).forEach(function (layer) {
     layer.layout = Object.assign({}, layer.layout, { visibility: countryLabelsShown() ? 'visible' : 'none' });
   });
+  addMainCityLabel(style);
   legacyStyle = style;
   //the label maps draw their text from these page fonts, so they have to be loaded first
   await Promise.all(Object.values(legacyLabelFonts).map(function (family) {
