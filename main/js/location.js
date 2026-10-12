@@ -363,8 +363,9 @@ function getExtraRadar() {
     }
 }
 
-//largest cities in the main city's state, same dataset the original web simulator used
-const stateCitiesURL = "https://gist.githubusercontent.com/Miserlou/c5cd8364bf9b2420bb29/raw/2bf258763cdddd704f8ffd3ea9a3e81d25e2c6f6/cities.json";
+//largest cities in the main city's state, same dataset the original web simulator used:
+//the 1000 largest U.S. cities (2013 census estimates), copied from https://gist.github.com/Miserlou/c5cd8364bf9b2420bb29
+const stateCitiesURL = "data/cities.json";
 
 async function getStatePopularCities(state) {
     if (!state) { return [] }
