@@ -13,6 +13,8 @@ var locRadarTimestamps, locRadarAnimation;
 var satRadarTimestamps, satRadarAnimation;
 var miniRadarTimestamps, miniRadarAnimation;
 var locradarani, satradani, miniradarani;
+//the radar draws above the city names, shields and boundaries; this much opacity lets them show through light echoes
+var radarEchoOpacity = 0.85;
 //count the doppler and radar/satellite showings, so cleanup from one showing skips a newer one of the same card
 var dopplerShowing = 0, satShowing = 0;
 mapboxgl.accessToken = "";
@@ -483,7 +485,7 @@ async function addLocRadarLayers() {
         type: "raster",
         source: `radar_${timestamp}`,
         layout: { visibility: "none" },
-        paint: { "raster-opacity": 1, "raster-fade-duration": 0, "raster-brightness-max": 0.9 }
+        paint: { "raster-opacity": radarEchoOpacity, "raster-fade-duration": 0, "raster-brightness-max": 0.9 }
       });
     }
   }
@@ -567,7 +569,7 @@ async function addSatRadarLayers() {
         type: "raster",
         source: `radar_${timestamp}`,
         layout: { visibility: "none" },
-        paint: { "raster-opacity": 1, "raster-fade-duration": 0, "raster-brightness-max": 0.9 }
+        paint: { "raster-opacity": radarEchoOpacity, "raster-fade-duration": 0, "raster-brightness-max": 0.9 }
       });
     }
   }
@@ -651,7 +653,7 @@ async function addMiniRadarLayers() {
         type: "raster",
         source: `radar_${timestamp}`,
         layout: { visibility: "none" },
-        paint: { "raster-opacity": 1, "raster-fade-duration": 0, "raster-brightness-max": 0.9 }
+        paint: { "raster-opacity": radarEchoOpacity, "raster-fade-duration": 0, "raster-brightness-max": 0.9 }
       });
     }
   }
