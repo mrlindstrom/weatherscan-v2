@@ -878,11 +878,13 @@ async function autoFindBeach() {
                 .slice(0, 6);
             for (var buoy of buoys) {
                 var report = await $.get('/surf/' + buoy.id.toLowerCase() + '.txt');
-                if (report.includes("Wind Wave:") && !report.includes("more than two hours old")) {
+                //ocean buoys break out "Wind Wave:", Great Lakes buoys only give "Seas:"
+                if ((report.includes("Wind Wave:") || report.includes("Seas:")) && !report.includes("more than two hours old")) {
                     beach.surfReport.buoy = buoy.id;
                     if (beach.surfReport.displayName == "") {
                         //"GALVESTON,TX -  22 NM East of Galveston, TX" -> "Galveston, TX"
-                        beach.surfReport.displayName = buoy.name.split(' - ')[0].replace(/,(\S)/, ', $1').toLowerCase()
+                        //"Topanga Nearshore, CA (103)": the number is the buoy's CDIP station, not useful on screen
+                        beach.surfReport.displayName = buoy.name.split(' - ')[0].replace(/\s*\(\d+\)$/, '').replace(/,(\S)/, ', $1').toLowerCase()
                             .replace(/\b[a-z]/g, function (c) { return c.toUpperCase() }).replace(/, ([A-Za-z]{2})$/, function (m, st) { return ', ' + st.toUpperCase() });
                     }
                     break;

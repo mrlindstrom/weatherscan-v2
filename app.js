@@ -40,6 +40,11 @@ app.use('/coastalwaters', createProxyMiddleware({
     changeOrigin: true,
     pathRewrite: {'^/locations': '/coastalwaters/'}
 }));
+//the Great Lakes get a nearshore marine forecast (NSH) instead of a coastal waters forecast
+app.use('/nearshore', createProxyMiddleware({
+    target: 'https://api.weather.gov/products/types/NSH/locations',
+    changeOrigin: true
+}));
 //NDBC station list, for finding the nearest buoy (NDBC sends no CORS headers)
 app.use('/ndbcstations', createProxyMiddleware({
     target: 'https://www.ndbc.noaa.gov',

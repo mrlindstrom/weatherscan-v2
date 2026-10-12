@@ -3185,6 +3185,10 @@ function manageDurations() {
         { duration: 30000, function: "coastalForecast" },
         { duration: 9000, function: "tides" },
       ]
+      //no tide stations on the Great Lakes (or other non-tidal water); skip the card unless a card jump asked for it
+      if (systemSettings.beach.tides.stations.length == 0 && !(cardJump.start && cardJump.start.card == "tides")) {
+        slideSettings.order[orderidx].slideLineup[gidx].slides = slideSettings.order[orderidx].slideLineup[gidx].slides.filter(function (s) { return s.function != "tides" })
+      }
       break;
     case "traffic":
       var trafPages = Math.ceil(weatherData.trafficReport.incidents.length/2)

@@ -462,6 +462,8 @@ function bandColor(bands) {
 function setCardMapImage(card, url, b, before) {
   var coordinates = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
   var id = mapCards[card].layer;
+  //data that lands while its card is up (a card jump right at startup) takes down the unavailable label
+  if (card == activeMapCard) { $(".tempunavailable").fadeOut(500) }
   if (cardMap.getSource(id)) {
     cardMap.getSource(id).updateImage({ url: url, coordinates: coordinates });
     return;

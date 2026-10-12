@@ -2456,6 +2456,9 @@ async function getBeachData() {
         if (getLineNo(stringedData, "Period:", 0) != undefined) {
           var periodText = stringedData[getLineNo(stringedData, "Period:", 0)].substring(8).replaceAll(" sec", "")
           weatherData.surfReport.wavePeriod = Math.round(Number(periodText)) + " Seconds"
+        } else if (/Peak Period: ([\d.]+) sec/.test(data)) {
+          //Great Lakes buoys have no wave breakdown, just the peak period
+          weatherData.surfReport.wavePeriod = Math.round(Number(/Peak Period: ([\d.]+) sec/.exec(data)[1])) + " Seconds"
         } else {
           weatherData.surfReport.wavePeriod = ""
         }
@@ -2469,6 +2472,8 @@ async function getBeachData() {
       if (data.includes("Wind Wave:")) {
         var waveText = stringedData[getLineNo(stringedData, "Wind Wave:", 0)].substring(11).replaceAll(" ft", "")
         weatherData.surfReport.waveHeight = Math.round(Number(waveText))
+      } else if (/Seas: ([\d.]+) ft/.test(data)) {
+        weatherData.surfReport.waveHeight = Math.round(Number(/Seas: ([\d.]+) ft/.exec(data)[1]))
       } else {
         weatherData.surfReport.waveHeight = "NONE"
       }
@@ -2484,7 +2489,11 @@ async function getBeachData() {
   getSurfReport()
   
   async function coastForecast() {
-    const data = await $.get('/coastalwaters/' + systemSettings.beach.coastalForecast.office)
+    var data = await $.get('/coastalwaters/' + systemSettings.beach.coastalForecast.office)
+    //Great Lakes offices issue a nearshore marine forecast (same layout) instead
+    if (!data["@graph"] || data["@graph"].length == 0) {
+      data = await $.get('/nearshore/' + systemSettings.beach.coastalForecast.office)
+    }
 
     try {
       var id = data["@graph"][0].id;
