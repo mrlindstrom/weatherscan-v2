@@ -91,7 +91,8 @@ function initializeCardMaps() {
     fixLegacyCityLabels(cardMap);
     //travel weather "Sct" pattern, also used for the legend box so they match
     var sct = scatteredPattern();
-    cardMap.addImage('sct-pattern', sct.image, { pixelRatio: sct.pixelRatio });
+    var streak = scatteredStreak();
+    cardMap.addImage('sct-streak', streak.image, { pixelRatio: streak.pixelRatio });
     //the legend box gets the basemap's land color behind the tint, like it sits on the map
     $(".travel-weather .sct.box").css({ "background-color": "#46553e", "background-image": "url(" + sct.url + ")", "background-size": (sct.size * 0.7) + "px " + (sct.size * 0.7) + "px" });
     loadCardMapData();
@@ -144,6 +145,7 @@ function showCardMap(card) {
     $("#slides").css("scale", "none");
     cardMap.resize();
     $("#slides").css("scale", scale);
+    if (card == 'travelWeather') { placeScatteredStreaks() }
   }, 50);
 }
 
@@ -326,7 +328,22 @@ async function loadTravelWeather() {
     var collection = function (features) { return { type: 'FeatureCollection', features: features } };
     //rain, then the scattered pattern over it, then the winter types on top
     setCardMapFill('travelWeather', collection(byKind.rain), { 'fill-color': '#3cbe3c', 'fill-opacity': 0.85 }, 'rain');
-    setCardMapFill('travelWeather', collection(byKind.sct), { 'fill-pattern': 'sct-pattern' }, 'sct');
+    //the scattered tint is a plain fill; its streaks are icons on a screen grid (placeScatteredStreaks) rather than
+    //a fill-pattern, which lambert draws at a different size and angle in each part of the map
+    travelSctFeatures = byKind.sct;
+    setCardMapFill('travelWeather', collection(byKind.sct), { 'fill-color': '#3cbe3c', 'fill-opacity': 0.35 }, 'sct');
+    if (!cardMap.getSource(sctStreakLayer)) {
+      cardMap.addSource(sctStreakLayer, { type: 'geojson', data: collection([]) });
+      cardMap.addLayer({
+        id: sctStreakLayer, type: 'symbol', source: sctStreakLayer,
+        layout: {
+          visibility: cardLayerVisibility('travelWeather'), 'icon-image': 'sct-streak',
+          'icon-allow-overlap': true, 'icon-ignore-placement': true,
+          'icon-rotation-alignment': 'viewport', 'icon-pitch-alignment': 'viewport'
+        }
+      }, 'admin-2-boundary-bg');
+    }
+    placeScatteredStreaks();
     setCardMapFill('travelWeather', collection(byKind.mix.concat(byKind.icy, byKind.snow)), {
       'fill-color': ['match', ['get', 'kind'], 'snow', '#d2d2d2', 'icy', '#d22277', '#d782be'],
       'fill-opacity': 0.85
@@ -530,7 +547,79 @@ async function loadWaterTemps() {
   }
 }
 
-//seamless tile of slanted green rain streaks over a light green tint, for scattered showers/storms.
+//one slanted green rain streak, the travel map's scattered showers/storms marking
+var sctStreakAngle = Math.PI / 7;
+function drawScatteredStreak(ctx, x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(sctStreakAngle);
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+  ctx.shadowOffsetX = 1;
+  ctx.shadowOffsetY = 1;
+  ctx.shadowBlur = 1;
+  ctx.fillStyle = '#2ee62e';
+  ctx.beginPath();
+  ctx.roundRect(-1.75, -6, 3.5, 12, 1.5);
+  ctx.fill();
+  ctx.restore();
+}
+function scatteredStreak() {
+  var size = 16, pixelRatio = 2;
+  var canvas = document.createElement('canvas');
+  canvas.width = size * pixelRatio;
+  canvas.height = size * pixelRatio;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(pixelRatio, pixelRatio);
+  drawScatteredStreak(ctx, size / 2, size / 2);
+  return { image: ctx.getImageData(0, 0, canvas.width, canvas.height), pixelRatio: pixelRatio };
+}
+
+//streak icons on the same brick grid as the legend's pattern tile, in screen pixels so every scattered area
+//gets streaks of one size and spacing. a streak goes where both of its ends fall inside a scattered area.
+var sctStreakLayer = 'cardmap-travel-weather-sct-streaks';
+var sctStreakTile = 26;
+var travelSctFeatures = [];
+function placeScatteredStreaks() {
+  var source = cardMap && cardMap.getSource(sctStreakLayer);
+  if (!source || activeMapCard != 'travelWeather') { return }
+  var width = cardMap.getContainer().offsetWidth, height = cardMap.getContainer().offsetHeight;
+  //every ring of every scattered area, projected to screen points
+  var rings = [];
+  travelSctFeatures.forEach(function (feature) {
+    var g = feature.geometry;
+    if (!g) { return }
+    var polygons = g.type == 'Polygon' ? [g.coordinates] : g.type == 'MultiPolygon' ? g.coordinates : [];
+    polygons.forEach(function (polygon) {
+      polygon.forEach(function (ring) {
+        rings.push(ring.map(function (c) { var p = cardMap.project(c); return [p.x, p.y] }));
+      });
+    });
+  });
+  //even-odd over all rings, so holes stay empty
+  var inside = function (x, y) {
+    var hit = false;
+    rings.forEach(function (ring) {
+      for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        if ((ring[i][1] > y) != (ring[j][1] > y) && x < (ring[j][0] - ring[i][0]) * (y - ring[i][1]) / (ring[j][1] - ring[i][1]) + ring[i][0]) { hit = !hit }
+      }
+    });
+    return hit;
+  };
+  var ex = 6 * Math.sin(sctStreakAngle), ey = 6 * Math.cos(sctStreakAngle);
+  var points = [];
+  for (var y = 0; y < height + sctStreakTile; y += sctStreakTile) {
+    for (var x = 0; x < width + sctStreakTile; x += sctStreakTile) {
+      [[x + 6.5, y + 6.5], [x + 19.5, y + 19.5]].forEach(function (p) {
+        if (inside(p[0] + ex, p[1] - ey) && inside(p[0] - ex, p[1] + ey)) {
+          points.push({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: cardMap.unproject(p).toArray() } });
+        }
+      });
+    }
+  }
+  source.setData({ type: 'FeatureCollection', features: points });
+}
+
+//seamless tile of slanted green rain streaks over a light green tint, for the travel map legend's Sct box.
 //images/assets/sct.png is a crop of an old map with that map's terrain baked in, so it can't be tiled cleanly.
 function scatteredPattern() {
   var size = 26, pixelRatio = 2;
@@ -543,26 +632,12 @@ function scatteredPattern() {
   ctx.fillRect(0, 0, size, size);
   //two streaks per tile, offset like bricks; each is also drawn shifted by a tile so ones crossing an edge wrap around
   var streaks = [[6.5, 6.5], [19.5, 19.5]];
-  var drawStreak = function (x, y) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(Math.PI / 7);
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
-    ctx.shadowBlur = 1;
-    ctx.fillStyle = '#2ee62e';
-    ctx.beginPath();
-    ctx.roundRect(-1.75, -6, 3.5, 12, 1.5);
-    ctx.fill();
-    ctx.restore();
-  };
   streaks.forEach(function (streak) {
     [-size, 0, size].forEach(function (dx) {
-      [-size, 0, size].forEach(function (dy) { drawStreak(streak[0] + dx, streak[1] + dy) });
+      [-size, 0, size].forEach(function (dy) { drawScatteredStreak(ctx, streak[0] + dx, streak[1] + dy) });
     });
   });
-  return { image: ctx.getImageData(0, 0, canvas.width, canvas.height), pixelRatio: pixelRatio, url: canvas.toDataURL(), size: size };
+  return { url: canvas.toDataURL(), size: size };
 }
 
 //ERDDAP sometimes answers with a plain text "Error {...}" while it's busy, so try a few times
