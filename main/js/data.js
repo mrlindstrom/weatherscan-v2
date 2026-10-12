@@ -1226,7 +1226,7 @@ async function getTrafficData() {
     var flowObj = {routeIcon:"",from:"",to:"",speed:"",baseSpeed:"",travelTime:"",color:"",mph:""}
     flowObj.from = route.fromStreet
     flowObj.to = route.toStreet
-    flowObj.routeIcon = "images/roadSigns/" + route.routeIcon + ".png"
+    flowObj.routeIcon = await roadSignURL(route.routeIcon)
     try {
       if (!trafficRequestAllowed()) { throw new Error("TomTom daily limit reached") }
       //from and to are "lat,lon"

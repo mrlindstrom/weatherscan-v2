@@ -195,9 +195,9 @@ function deleteTrafficMapIcons() {
 //route badges on the traffic overview map. the map's own symbol layers don't draw on this style, so the
 //badges are html images over the map, positioned from the route numbers and shield types in its road data.
 var trafficBadgeShields = {
-  'us-interstate': { image: 'images/roadSigns/interstateHighwaySignLarge.png', text: '#ffffff', y: 0.58, priority: 0 },
-  'us-highway': { image: 'images/roadSigns/usHighwaySignLarge.png', text: '#000000', y: 0.52, priority: 1 },
-  'circle-white': { image: 'images/roadSigns/stateHighwaySignLarge.png', text: '#000000', y: 0.5, priority: 2 }
+  'us-interstate': { image: 'images/roadSigns/interstateHighwaySignLarge.png', text: '#ffffff', y: 0.58, width: 0.7, priority: 0 },
+  'us-highway': { image: 'images/roadSigns/usHighwaySignLarge.png', text: '#000000', y: 0.52, width: 0.56, priority: 1 },
+  'circle-white': { image: 'images/roadSigns/stateHighwaySignLarge.png', text: '#000000', y: 0.5, width: 0.7, priority: 2 }
 };
 var trafficBadgeScale = 0.6; //of the 85x84 sign images
 var trafficBadgeMax = 10;
@@ -226,13 +226,35 @@ function trafficBadgeURL(shield, ref) {
   ctx.drawImage(info.img, 0, 0);
   var size = ref.length >= 3 ? 30 : 38;
   ctx.font = "bold " + size + "px Interstate";
-  while (ctx.measureText(ref).width > canvas.width * 0.7) { size--; ctx.font = "bold " + size + "px Interstate" }
+  //width: how much of the sign the number may span (the US shield narrows toward its sides)
+  while (ctx.measureText(ref).width > canvas.width * info.width) { size--; ctx.font = "bold " + size + "px Interstate" }
   ctx.fillStyle = info.text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(ref, canvas.width / 2, canvas.height * info.y);
   trafficBadgeCache[key] = canvas.toDataURL();
   return trafficBadgeCache[key];
+}
+
+//sign for a traffic flow route's routeIcon: images/roadSigns/<name>.png when there is one, otherwise names
+//like interstate_45, usRoute_59 or stateRoute_249 are drawn on the blank signs, so any city's routes get one
+var roadSignPatterns = { interstate: 'us-interstate', usRoute: 'us-highway', stateRoute: 'circle-white' };
+async function roadSignURL(name) {
+  var file = "images/roadSigns/" + name + ".png";
+  var exists = await new Promise(function (resolve) {
+    var img = new Image();
+    img.onload = function () { resolve(true) };
+    img.onerror = function () { resolve(false) };
+    img.src = file;
+  });
+  var match = /^(interstate|usRoute|stateRoute)_([0-9A-Za-z]+)$/.exec(name);
+  if (exists || !match) { return file }
+  await trafficBadgeBases;
+  var shield = roadSignPatterns[match[1]];
+  if (!trafficBadgeShields[shield].img) { return file }
+  //the canvas only uses the sign font once it has loaded
+  try { await document.fonts.load("bold 38px Interstate") } catch (error) {}
+  return trafficBadgeURL(shield, match[2]);
 }
 
 async function createTrafficBadges() {
