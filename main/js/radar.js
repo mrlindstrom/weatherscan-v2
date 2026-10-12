@@ -154,8 +154,9 @@ async function loadLegacyStyle() {
     return Promise.all([document.fonts.load("normal 40px " + family), document.fonts.load("bold 40px " + family)]).catch(function () {});
   }));
 }
-//city names on the radar maps in v2's fonts rather than the style's Hind: mapbox draws every label on these
-//maps in the browser from the page's own font (localFontFamily) instead of downloading the style's glyphs
+//every map's text (city, state and water names, shields) in v2's fonts rather than the style's Hind and DIN:
+//mapbox draws the labels in the browser from the page's own font (localFontFamily) instead of downloading the
+//style's glyphs. the mini radar uses interstate like v2's l-bar; everything else frutiger black
 var legacyLabelFonts = { radar: "'Frutiger Black'", mini: "'Interstate'" };
 function legacyLabelOptions(font) {
   return legacyMaps ? { localFontFamily: legacyLabelFonts[font] } : {};
@@ -164,6 +165,7 @@ async function initializeRadars() {
   await loadLegacyStyle();
   mapboxgl.accessToken = map_key;
   miniradar = new mapboxgl.Map({
+    ...legacyLabelOptions('mini'),
     container: 'miniradar-basemap', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.LBar.radar.lon, systemSettings.LBar.radar.lat],
@@ -252,6 +254,7 @@ async function initializeRadars() {
 
   mapboxgl.accessToken = map_key
   locradar = new mapboxgl.Map({
+    ...legacyLabelOptions('radar'),
     container: 'radar-basemap', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
@@ -280,6 +283,7 @@ async function initializeRadars() {
   });
 
   satmap = new mapboxgl.Map({
+    ...legacyLabelOptions('radar'),
     container: 'sat-basemap', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],

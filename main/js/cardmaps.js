@@ -75,6 +75,7 @@ function initializeCardMaps() {
   $(mapCards.estimatedPrecip.container).after(cardMapDiv);
 
   cardMap = new mapboxgl.Map({
+    ...legacyLabelOptions('radar'),
     container: cardMapDiv,
     style: legacyStyle,
     center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
@@ -86,9 +87,11 @@ function initializeCardMaps() {
   //'style.load' rather than 'load': the map starts out inside a hidden card, and 'load' waits for a first
   //frame that a hidden map never draws, which held all of its data back until the first map card showed
   cardMap.once('style.load', function () {
+    cardMapReady = true;
     //no road shields, city labels with the dot fix
     cardMap.setLayoutProperty('road-number-shield', 'visibility', 'none');
     fixLegacyCityLabels(cardMap);
+    styleRadarCityLabels(cardMap, radarCityLook.radar);
     //travel weather "Sct" pattern, also used for the legend box so they match
     var sct = scatteredPattern();
     var streak = scatteredStreak();
@@ -97,6 +100,7 @@ function initializeCardMaps() {
     $(".travel-weather .sct.box").css({ "background-color": "#46553e", "background-image": "url(" + sct.url + ")", "background-size": (sct.size * 0.7) + "px " + (sct.size * 0.7) + "px" });
     loadCardMapData();
     setInterval(loadCardMapData, cardMapRefresh);
+    if (activeMapCard) { showCardMap(activeMapCard) }
   });
 }
 
@@ -121,10 +125,14 @@ function cardLayerVisibility(card) {
 }
 
 //called by each map card when it shows
+//false until the style has loaded. in a background tab that can be after the first map card starts (the inline
+//style finishes on an animation frame), so the card is remembered and shown once it's ready
+var cardMapReady = false;
 function showCardMap(card) {
   if (!cardMap) { return }
   activeMapCard = card;
   $(mapCards[card].container).after(cardMapDiv);
+  if (!cardMapReady) { return }
   //a card can have several layers, all named after its layer id
   cardMap.getStyle().layers.forEach(function (layer) {
     Object.keys(mapCards).forEach(function (name) {
