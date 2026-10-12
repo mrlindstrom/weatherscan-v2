@@ -19,13 +19,6 @@
     <link  type="text/css" href="utilities/maps.css" rel="stylesheet" />
     <script src="utilities/maps-web.min.js"></script>
 
-    <script type="text/javascript" src="https://js.api.here.com/v3/3.2/mapsjs-core.js"></script>
-<script type="text/javascript" src="https://js.api.here.com/v3/3.2/mapsjs-service.js"></script>
-<script type="text/javascript" src="https://js.api.here.com/v3/3.2/mapsjs-mapevents.js"></script>
-<script type="text/javascript" src="https://js.api.here.com/v3/3.2/mapsjs-clustering.js"></script>
-<script type="text/javascript" src="https://js.api.here.com/v3/3.2/mapsjs-data.js"></script>
-<script type="text/javascript" charset="utf-8" src="https://js.api.here.com/v3/3.2/mapsjs-ui.js"></script>
-<link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.2/mapsjs-ui.css" />
 
   </head>
   <body>
@@ -39,8 +32,10 @@
     <script type="text/javascript" src="js/location.js"></script>
     <script type="text/javascript" src="js/startup.js"></script>
     <script type="text/javascript" src="js/radar.js"></script>
+    <script type="text/javascript" src="js/cardmaps.js"></script>
     <!-- <script type="text/javascript" src="js/datamaps.js"></script> -->
     <script type="text/javascript" src="js/slides.js"></script>
+    <script type="text/javascript" src="js/cardjump.js"></script>
     <script type="text/javascript" src="js/loops.js"></script>
     <script type="text/javascript" src="js/crawl.js"></script>
     <script type="text/javascript" src="js/main.js"></script>
@@ -510,7 +505,7 @@
             <div id="trafmap"></div>
           </div>
           <div class="traffic-icons"></div>
-          <div class="trafficcredit shrinkY">Traffic from: Traffic Pulse</div>
+          <div class="trafficcredit shrinkY">Traffic from: Mapbox</div>
         </div>
 
         <div class="traffic-report" style="display: none">
@@ -527,7 +522,7 @@
           <div class="intensity bottom bottomgroup shrinkY"></div>
           <div class="intensitycover bottom bottomgroup shrinkY"></div>
           <div class="description bottom bottomgroup shrinkY"></div>
-          <div class="trafficcredit shrinkY">Traffic from: Traffic Pulse</div>
+          <div class="trafficcredit shrinkY">Traffic from: TomTom</div>
         </div>
 
         <div class="traffic-flow" style="display: none;">
@@ -565,7 +560,7 @@
             <div class="triptime mingroup fullgroup shrinkY"></div>
             <div class="min mingroup fullgroup shrinkY">MIN</div>
           </div>
-          <div class="trafficcredit shrinkY panelContent">Traffic from: Traffic Pulse</div>
+          <div class="trafficcredit shrinkY panelContent">Traffic from: TomTom</div>
           <div class="trafficheader shrinkY panelContent">TRAFFIC</div>
           <div class="timeheader shrinkY panelContent">TRIP TIME</div>
         </div>
@@ -1538,14 +1533,14 @@
           <div class="overlay"></div>
           <img class="mapcorner" src="images/assets/map_curve_green.png">
           <div class="legend" style="display: none;">
-            <div class="exceptional shrinkY">Excessively<br>Dry</div>
+            <div class="exceptional shrinkY">Exceptional</div>
             <div class="box one"></div>
             <div class="box two"></div>
             <div class="box three"></div>
             <div class="box four"></div>
             <div class="box five"></div>
             <div class="box six"></div>
-            <div class="dry shrinkY">Extremely<br>Moist</div>
+            <div class="dry shrinkY">Abnormally<br>Dry</div>
             <div class="timestamp shrinkY"></div>
           </div>
         </div>

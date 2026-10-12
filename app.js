@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, 'main')));
 
@@ -32,6 +32,12 @@ app.use('/coastalwaters', createProxyMiddleware({
     target: 'https://api.weather.gov/products/types/CWF/locations',
     changeOrigin: true,
     pathRewrite: {'^/locations': '/coastalwaters/'}
+}));
+//NDBC station list, for finding the nearest buoy (NDBC sends no CORS headers)
+app.use('/ndbcstations', createProxyMiddleware({
+    target: 'https://www.ndbc.noaa.gov',
+    changeOrigin: true,
+    pathRewrite: () => '/activestations.xml'
 }));
 app.use('/cwf', createProxyMiddleware({
     target: 'https://api.weather.gov/products',

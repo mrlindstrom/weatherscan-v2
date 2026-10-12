@@ -184,7 +184,9 @@ var winterTipCut = new Date(yrr, 10, 22, 0, 0, 0);
 var healthTipId = Math.round(Math.random() * ((tipsLib.length-1) - 0));
 //var kicked = false;
 function slideCallBack(){
-    idx++;
+    if (!cardJumpHandoff()) {
+      idx++;
+    }
     showSlides();
 };
 var provType = "provider"
@@ -334,7 +336,8 @@ function segmentSet() {
     if (lBarData.radarUnavailable || systemSettings.LBar.radar.enabled == false) {
       $(".radar-lbar").fadeOut(0)
     } else {
-      if (gidx == 0) {
+      if (gidx == 0 || cardJump.firstSegment) {
+        cardJump.firstSegment = false
         try {
           if (miniRadarAnimation != undefined) {clearInterval(miniRadarAnimation)}
           $(".radar-lbar").fadeIn(0)
@@ -785,6 +788,7 @@ var slidePrograms = {
       rdrPgm()
     },
     dopplerRadar() {
+      var showing = ++dopplerShowing
       $("#slides-background").fadeOut(0)
       radarSlide = true
       var dataTunnel = locationChoice == "main" || locationChoice == "spanish" ? systemSettings.mainCity.radar : systemSettings.extraCity.cities[locationid].radar
@@ -818,9 +822,11 @@ var slidePrograms = {
         locradarAmenitiesTrans.setZoom(dataTunnel.zoom)
         radarEchoes.setZoom(dataTunnel.zoom)
 
-        locradarAmenities.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'visible');//county lines
-        locradarAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'visible');//black roads
-        locradarAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'visible');//gray roads
+        if (!legacyMaps) {
+          locradarAmenities.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'visible');//county lines
+          locradarAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'visible');//black roads
+          locradarAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'visible');//gray roads
+        }
       } catch(error) {
         weatherData.dopplerUnavailable = true
       }
@@ -888,10 +894,12 @@ var slidePrograms = {
         $(".doppler-radar .icons-trans").fadeOut(566)
         $(".doppler-radar .radar-legend").fadeOut(566)
         setTimeout(() => {
+          //a held card has already started its next showing, which this would blank out
+          if (showing != dopplerShowing) { return }
           clearInterval(locRadarAnimation)
           $("#radar-basemap").fadeOut(0)
           $("#slides-background").fadeIn(0)
-          setTimeout(stopLocalRadar,500)
+          setTimeout(() => { if (showing == dopplerShowing) { stopLocalRadar() } }, 500)
         }, 566);
       }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-566);
       try {
@@ -920,6 +928,7 @@ var slidePrograms = {
     },
     //SATELLITE
     radarSatellite() {
+      var showing = ++satShowing
       $("#slides-background").fadeOut(0)
       weatherData.satUnavailable = false
       var dataTunnel = locationChoice == "main" || locationChoice == "spanish" ? systemSettings.mainCity.radar : systemSettings.extraCity.cities[locationid].radar
@@ -965,9 +974,10 @@ var slidePrograms = {
         $(".doppler-radar .radar-legend").fadeOut(566)
         $("#sat-amenities").fadeOut(566)
         setTimeout(() => {
+          if (showing != satShowing) { return }
           $("#slides-background").fadeIn(0)
           clearInterval(satRadarAnimation)
-          setTimeout(stopSatRadar,500)
+          setTimeout(() => { if (showing == satShowing) { stopSatRadar() } }, 500)
         }, 566);
       }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-566);
       try {
@@ -1215,6 +1225,7 @@ var slidePrograms = {
           $("#slides").css("scale","0.72")
         }
           trafficMap.setZoom(trafZoom)
+          createTrafficBadges()
         }, 1)
 
          setTimeout(() => {
@@ -1337,6 +1348,11 @@ var slidePrograms = {
                 $(".traffic-flow .panel" + divs[i] + " .noIncidents").fadeIn(0)
               }
             }
+          } else {
+            //a later page with fewer routes: clear what the previous page left in this panel
+            $(".traffic-flow .panel" + divs[i] + " .flowBlock").fadeOut(0)
+            $(".traffic-flow .panel" + divs[i] + " .noIncidents").fadeOut(0)
+            $(".traffic-flow .panel" + divs[i] + " .mingroup").fadeOut(0)
           }
         }
 
@@ -1394,6 +1410,7 @@ var slidePrograms = {
         }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-500);
       }
       $("#travel-weather-map").fadeIn(500)
+      showCardMap("travelWeather")
       $(".travel-weather .legend").fadeIn(500)
       setTimeout(() => {
         fadeSlideOut($(".travel-weather"), 0, true, 500)
@@ -1839,6 +1856,7 @@ var slidePrograms = {
         }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-500);
       }
       $("#golf-index-map").fadeIn(500)
+      showCardMap("golfIndex")
       $(".golf-index .legend").fadeIn(500)
       setTimeout(() => {
         fadeSlideOut($(".golf-index"), 0, true, 500)
@@ -2348,6 +2366,7 @@ var slidePrograms = {
         }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-500);
       }
       $("#estimated-precip-map").fadeIn(500)
+      showCardMap("estimatedPrecip")
       $(".estimated-precip .legend").fadeIn(500)
       setTimeout(() => {
         fadeSlideOut($(".estimated-precip"), 0, true, 500)
@@ -2371,6 +2390,7 @@ var slidePrograms = {
         }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-500);
       }
       $("#precip-forecast-map").fadeIn(500)
+      showCardMap("precipForecast")
       $(".precip-forecast .legend").fadeIn(500)
       setTimeout(() => {
         fadeSlideOut($(".precip-forecast"), 0, true, 500)
@@ -2394,6 +2414,7 @@ var slidePrograms = {
         }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-500);
       }
       $("#drought-monitor-map").fadeIn(500)
+      showCardMap("droughtMonitor")
       $(".drought-monitor .legend").fadeIn(500)
       setTimeout(() => {
         fadeSlideOut($(".drought-monitor"), 0, true, 500)
@@ -2419,6 +2440,7 @@ var slidePrograms = {
         }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-500);
       }
       $("#frost-freeze-map").fadeIn(500)
+      showCardMap("frostFreeze")
       $(".frost-freeze .legend").fadeIn(500)
       setTimeout(() => {
         fadeSlideOut($(".frost-freeze"), 0, true, 500)
@@ -2497,6 +2519,7 @@ var slidePrograms = {
         }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-500);
       }
       $("#snowfall-forecast-map").fadeIn(500)
+      showCardMap("snowfallForecast")
       $(".snowfall-forecast .legend").fadeIn(500)
       setTimeout(() => {
         fadeSlideOut($(".snowfall-forecast"), 0, true, 500)
@@ -2641,6 +2664,7 @@ var slidePrograms = {
         }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-500);
       }
       $("#water-temps-map").fadeIn(500)
+      showCardMap("waterTemps")
       $(".water-temps .legend").fadeIn(500)
       setTimeout(() => {
         fadeSlideOut($(".water-temps"), 0, true, 500)
@@ -2772,6 +2796,7 @@ function slideKickOff() {
   }
   createTopArea()
   switchProvider("provider")
+  applyStartCard()
   manageDurations()
   setInterval(() => {
     checkWarningCrawl()
@@ -2779,6 +2804,7 @@ function slideKickOff() {
    //console.log(slideSettings.order[orderidx].slideLineup)
    //console.log(orderidx)
   segmentSet()
+  resolveStartCard()
   showSlides();
   buildHeader();
   ccTickerLoop(0);

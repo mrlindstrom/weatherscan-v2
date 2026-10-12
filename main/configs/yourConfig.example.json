@@ -6,6 +6,7 @@
           "traf_key":""
         },
         "systemLocation":"",
+        "corsProxy":"",
         "appearanceSettings":{
             "nationalConfig":false,
             "iconSet":"2010",

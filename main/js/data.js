@@ -1136,79 +1136,139 @@ function getSpanishData() {
   }
   getExtended()
 }
-async function getTrafficData() {
-  async function getTrafficReport() {
-    try {
-    var trafurl = "https://data.traffic.hereapi.com/v7/incidents?in=circle:" + systemSettings.traffic.lat + "," + systemSettings.traffic.lon + ";r=4000&locationReferencing=tmc&lang=en-US&type=construction,accident&apiKey=" + traf_key
-    
-    const data = await $.getJSON(trafurl)
+//traffic comes from TomTom (free plan, no card; requests over the daily allowance are refused, not billed).
+//traf_key in the config holds the TomTom key.
+var trafficDailyLimit = 2000; //TomTom allows 2,500 a day; stop short of it
+//meters around the traffic location. TomTom can't filter to highways the way HERE's TMC option did,
+//so search wider and rank numbered roads first
+var trafficIncidentRadius = 25000;
 
-    
+//counts TomTom requests per day in this browser and refuses once the limit is reached
+function trafficRequestAllowed() {
+  var today = dateFns.format(new Date(), "yyyy-MM-dd")
+  var count = { day: today, n: 0 }
+  try {
+    var saved = JSON.parse(localStorage.getItem("tomtomRequests"))
+    if (saved && saved.day == today) { count = saved }
+  } catch (error) {}
+  if (count.n >= trafficDailyLimit) {
+    console.warn("[traffic] skipped: reached " + trafficDailyLimit + " TomTom requests today")
+    return false
+  }
+  count.n++
+  try { localStorage.setItem("tomtomRequests", JSON.stringify(count)) } catch (error) {}
+  return true
+}
+
+async function getTrafficData() {
+  //the traffic location defaults to the main city (written back so the overview map and headers use it too)
+  var traffic = systemSettings.traffic
+  if (!traffic.lat || !traffic.lon) {
+    traffic.lat = systemSettings.mainCity.lat
+    traffic.lon = systemSettings.mainCity.lon
+  }
+  if (!traffic.locationName) { traffic.locationName = systemSettings.mainCity.locationName }
+  var lat = Number(traffic.lat)
+  var lon = Number(traffic.lon)
+  var locationName = traffic.locationName
+
+  async function getTrafficReport() {
+    weatherData.trafficReport.incidents = []
+    weatherData.trafficReport.locationName = locationName
+    try {
+      if (!trafficRequestAllowed()) { throw new Error("TomTom daily limit reached") }
+      var dLat = trafficIncidentRadius / 111320
+      var dLon = dLat / Math.cos(lat * Math.PI / 180)
+      var params = new URLSearchParams({
+        key: traf_key,
+        bbox: [lon - dLon, lat - dLat, lon + dLon, lat + dLat].join(","),
+        fields: "{incidents{properties{iconCategory,magnitudeOfDelay,events{description},from,to,roadNumbers}}}",
+        language: "en-US",
+        //accidents, lane and road closures, road works, broken down vehicles
+        categoryFilter: "1,7,8,9,14",
+        timeValidityFilter: "present"
+      })
+      const data = await $.getJSON("https://api.tomtom.com/traffic/services/5/incidentDetails?" + params.toString())
+
       var spacer = {"LOW IMPACT":"                     ", "MEDIUM IMPACT":"                            ", "HIGH IMPACT":"                      "}
-      weatherData.trafficReport.incidents = []
-      weatherData.trafficReport.noReport = false
-      weatherData.trafficReport.locationName = systemSettings.traffic.locationName
-      var t = 0
-      if (data.results.length > 0) {
-        for (var i = 0; i < data.results.length; i++) {
-          if (t < 6) {
-            var trafficObj = {impact:"", desc:"", title:""}
-            trafficObj.title = incidentType(data.results[i].incidentDetails.type) + parseStreetName(data.results[i].incidentDetails.description.value)
-            trafficObj.impact = incidentImpact(data.results[i].incidentDetails.criticality)
-            trafficObj.desc = spacer[incidentImpact(data.results[i].incidentDetails.criticality)] + data.results[i].incidentDetails.description.value
-            if (parseStreetName(data.results[i].incidentDetails.description.value) != false) {
-              weatherData.trafficReport.incidents.push(trafficObj)
-              t++
-            }
-          } else {break}
-        }
-      } else {
-        weatherData.trafficReport.incidents = []
-        weatherData.trafficReport.noReport = true
-        weatherData.trafficReport.locationName = systemSettings.traffic.locationName
+      var incidents = data.incidents || []
+      //incidents on numbered highways first (neighborhood street closures last), then the worst delays
+      var numbered = function (i) { return (i.properties.roadNumbers && i.properties.roadNumbers.length > 0) ? 1 : 0 }
+      incidents.sort(function (a, b) { return (numbered(b) - numbered(a)) || ((b.properties.magnitudeOfDelay || 0) - (a.properties.magnitudeOfDelay || 0)) })
+      var kinds = {1: "Accident, ", 7: "Lane Closed, ", 8: "Road Closed, ", 9: "Construction, ", 14: "Stalled Vehicle, "}
+      var titles = []
+      for (var incident of incidents) {
+        if (weatherData.trafficReport.incidents.length >= 6) { break }
+        var p = incident.properties
+        var hasNumber = p.roadNumbers && p.roadNumbers.length > 0
+        var road = hasNumber ? p.roadNumbers[0] : p.from
+        var title = (kinds[p.iconCategory] || "Incident, ") + road
+        //the same closure often comes back as several segments
+        if (titles.includes(title)) { continue }
+        titles.push(title)
+        var event = (p.events && p.events.length > 0) ? p.events[0].description : ""
+        var impact = tomtomImpact(p.magnitudeOfDelay, hasNumber)
+        weatherData.trafficReport.incidents.push({
+          title: title,
+          impact: impact,
+          desc: spacer[impact] + event + (p.from ? " from " + p.from : "") + (p.to ? " to " + p.to : "")
+        })
       }
+      weatherData.trafficReport.noReport = weatherData.trafficReport.incidents.length == 0
     } catch (error) {
       console.error(error)
-      
-      weatherData.trafficReport.incidents = []
       weatherData.trafficReport.noReport = true
-      weatherData.trafficReport.locationName = systemSettings.traffic.locationName
     }
   }
   getTrafficReport()
 
-  async function getTrafficFlow(routenum) {
+  async function getTrafficFlow(route) {
     var flowObj = {routeIcon:"",from:"",to:"",speed:"",baseSpeed:"",travelTime:"",color:"",mph:""}
+    flowObj.from = route.fromStreet
+    flowObj.to = route.toStreet
+    flowObj.routeIcon = "images/roadSigns/" + route.routeIcon + ".png"
     try {
-    var url = "https://router.hereapi.com/v8/routes?transportMode=car&origin=" + systemSettings.traffic.routes[routenum].from + "&destination=" + systemSettings.traffic.routes[routenum].to + "&return=summary,travelSummary,polyline&apiKey=" + traf_key
-    
-    const data = await $.getJSON(url)
+      if (!trafficRequestAllowed()) { throw new Error("TomTom daily limit reached") }
+      //from and to are "lat,lon"
+      var url = "https://api.tomtom.com/routing/1/calculateRoute/" + route.from + ":" + route.to + "/json?traffic=true&travelMode=car&computeTravelTimeFor=all&key=" + traf_key
+      const data = await $.getJSON(url)
+      var summary = data.routes[0].summary
 
-      weatherData.trafficFlow.locationName = systemSettings.traffic.locationName
       weatherData.trafficFlow.noReport = false
-      
-      flowObj.from = systemSettings.traffic.routes[routenum].fromStreet
-      flowObj.to = systemSettings.traffic.routes[routenum].toStreet
-      flowObj.baseSpeed = Math.round(metStoMPH(data.routes[0].sections[0].summary.length/data.routes[0].sections[0].summary.baseDuration))
-      flowObj.mph = Math.round(metStoMPH(data.routes[0].sections[0].summary.length/data.routes[0].sections[0].summary.duration))
-      flowObj.speed = ((flowObj.mph >= flowObj.baseSpeed) ? "CLEAR" : metStoMPH(data.routes[0].sections[0].summary.length/data.routes[0].sections[0].summary.duration))
-      flowObj.travelTime = Math.round(data.routes[0].sections[0].summary.duration/60)
+      flowObj.baseSpeed = Math.round(metStoMPH(summary.lengthInMeters / summary.noTrafficTravelTimeInSeconds))
+      flowObj.mph = Math.round(metStoMPH(summary.lengthInMeters / summary.travelTimeInSeconds))
+      flowObj.speed = ((flowObj.mph >= flowObj.baseSpeed) ? "CLEAR" : flowObj.mph)
+      flowObj.travelTime = Math.round(summary.travelTimeInSeconds / 60)
       flowObj.color = ((flowObj.speed == "CLEAR") ? "GREEN" : (flowObj.speed <= 25) ? "RED" : (flowObj.mph >= 40) ? "GREEN" : "YELLOW")
-      flowObj.routeIcon = "images/roadSigns/" + systemSettings.traffic.routes[routenum].routeIcon + ".png"
     } catch (error) {
       console.error(error)
-
-      flowObj.from = systemSettings.traffic.routes[routenum].fromStreet
-      flowObj.to = systemSettings.traffic.routes[routenum].toStreet
       flowObj.color = "NOREPORT"
-      flowObj.routeIcon = "images/roadSigns/" + systemSettings.traffic.routes[routenum].routeIcon + ".png"
     }
-    weatherData.trafficFlow.routes[routenum] = flowObj
+    weatherData.trafficFlow.routes.push(flowObj)
   }
 
+  weatherData.trafficFlow.locationName = locationName
   weatherData.trafficFlow.routes = []
-  for (var i = 0; i < systemSettings.traffic.routes.length; i++) {
-    await getTrafficFlow(i)
+  //routes left blank in the config are skipped
+  var routes = traffic.routes.filter(function (route) { return route.from && route.to })
+  weatherData.trafficFlow.noReport = routes.length == 0
+  for (var route of routes) {
+    await getTrafficFlow(route)
+  }
+}
+
+//TomTom magnitudeOfDelay: 1 minor, 2 moderate, 3 major, 4 undefined (used for closures).
+//a closure is high impact on a numbered highway, medium on a local street
+function tomtomImpact(magnitude, numberedRoad) {
+  switch (magnitude) {
+    case 2:
+      return "MEDIUM IMPACT";
+    case 3:
+      return "HIGH IMPACT";
+    case 4:
+      return numberedRoad ? "HIGH IMPACT" : "MEDIUM IMPACT";
+    default:
+      return "LOW IMPACT";
   }
 }
 async function getTravelData() {
@@ -2335,7 +2395,24 @@ async function getSkiData() {
   
   weatherData.skiReport.resorts.sort((a, b) => a.timeReported-b.timeReported)
 }
-function getBeachData() {
+//zone codes in an NWS zone header line, e.g. "GMZ350-355-121315-" -> ["GMZ350", "GMZ355"],
+//"ANZ230>234-..." -> ANZ230 through ANZ234. the 6 digit group is the expiration time.
+function ugcZones(line) {
+  if (!/^[A-Z]{2}Z\d{3}/.test(line)) { return [] }
+  var zones = [], prefix = ""
+  line.split("-").forEach(function (part) {
+    var m = part.match(/^([A-Z]{2}Z)?(\d{3})(?:>(\d{3}))?$/)
+    if (!m) { return }
+    if (m[1]) { prefix = m[1] }
+    var last = m[3] ? Number(m[3]) : Number(m[2])
+    for (var n = Number(m[2]); n <= last; n++) { zones.push(prefix + String(n).padStart(3, "0")) }
+  })
+  return zones
+}
+
+async function getBeachData() {
+  //fills in any blank buoy, coastal zone, tide stations or almanac airport first
+  await autoFindBeach()
   async function getSurfReport() {
     const data = await $.get('/surf/' + systemSettings.beach.surfReport.buoy.toLowerCase() + '.txt')
 
@@ -2444,9 +2521,12 @@ function getBeachData() {
           }
         }
         weatherData.coastalForecast.warnings = []
-        var lineBump = getLineNo(stringedData, systemSettings.beach.coastalForecast.zone, 0)
+        //zones that share a forecast are grouped under one header ("GMZ350-355-121315-" is GMZ350 and GMZ355)
+        var lineBump = stringedData.findIndex(function (line) { return ugcZones(line).includes(systemSettings.beach.coastalForecast.zone) })
+        if (lineBump == -1) { throw new Error("zone " + systemSettings.beach.coastalForecast.zone + " is not in the coastal waters forecast") }
         weatherData.coastalForecast.locationName = ((systemSettings.beach.coastalForecast.zoneName == "") ? stringedData[lineBump+1] : systemSettings.beach.coastalForecast.zoneName)
-        var fcstBumper = 4
+        //the zone names can run over several lines; the forecast starts after the blank line that follows them
+        var fcstBumper = stringedData.findIndex(function (line, i) { return i > lineBump && line.trim() == "" }) - lineBump + 1
         function isTime(text) {if (text.includes("X~")) {return true} else {return false}}
         function isAlert(text) {if (text.substring(0, 2) == "...") {return true} else {return false}}
         for (var i = 0; i < stringedData.length-lineBump; i++) {
@@ -2479,7 +2559,7 @@ function getBeachData() {
               }
             }
           }
-          weatherData.coastalForecast.times[i].forecast = cline.replaceAll("X~", "<em>").replaceAll("...", "</em><br>")
+          weatherData.coastalForecast.times[i].forecast = cline.replaceAll("X~", "<em>").replaceAll("...", "</em><br>").replace(" NIGHT</em>", " Night</em>")
         }
       } catch (error) {
         console.error(error)
@@ -2544,7 +2624,7 @@ function getBeachData() {
 
     try {
       var cdate = new Date()
-      weatherData.tides.almanacName = systemSettings.beach.tides.almanac.obsName
+      weatherData.tides.almanacName = systemSettings.beach.tides.almanac.obsName || systemSettings.beach.tides.almanac.airportName
       var srid = 0
       var ssid = 0
       if (new Date(Sdata.sunriseTimeLocal[srid]) < cdate) {{
@@ -2558,7 +2638,7 @@ function getBeachData() {
     } catch (error) {
       console.error(error)
       
-      weatherData.tides.almanacName = systemSettings.beach.tides.almanac.obsName
+      weatherData.tides.almanacName = systemSettings.beach.tides.almanac.obsName || systemSettings.beach.tides.almanac.airportName
       weatherData.tides.sunrise = ""
       weatherData.tides.sunset = ""
     }
@@ -2621,6 +2701,13 @@ async function startPrograms() {
   }
   
   alignDataMaps()
+  if (["garden", "travel", "golf", "ski", "beach"].some(p => systemSettings.packageSettings.includes(p))) {
+    try {
+      initializeCardMaps()
+    } catch (error) {
+      console.error(error)
+    }
+  }
   createMiniradarCities()
   
   initTravelForecast()

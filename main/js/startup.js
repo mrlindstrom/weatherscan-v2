@@ -68,7 +68,14 @@ if (windowStatus == "nationalForecast") {
     traf_key = systemSettings.apiKeys.traf_key
   })
 } else {
-  $.getJSON("configs/yourConfig.json", function(data) {
+  //yourConfig.json is the personal (gitignored) copy; a fresh clone runs off the tracked example until one is made
+  $.getJSON("configs/yourConfig.json").fail(function () {
+    console.info("configs/yourConfig.json not found, using configs/yourConfig.example.json")
+    return $.getJSON("configs/yourConfig.example.json").done(applyYourConfig)
+  }).done(applyYourConfig)
+}
+
+function applyYourConfig(data) {
     systemSettings = data.jsonSystemSettings
     //console.log("Updated location settings:", systemSettings);
     //console.log(slideSettings.order[0])
@@ -80,7 +87,6 @@ if (windowStatus == "nationalForecast") {
     //if (q != "nationalForecast" /**temp code for now -> */ && q != "debugJoeMist" && q != "debugJensonMist" && q != "debugColsterMist") {
     //    locationJS()
     //}
-  })
 }
 
   
@@ -182,6 +188,7 @@ requestAnimationFrame(animate);
       }
     }
   
+    addCardJumpPackage()
     for (var i = 0; i < systemSettings.packageSettings.length; i++) {
       slideSettings.order[0].slideLineup.push(packageLibrary[systemSettings.packageSettings[i]])
     }

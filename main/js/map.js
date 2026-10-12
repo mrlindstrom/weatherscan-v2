@@ -24,6 +24,8 @@ function initTravelForecast() {
   }
 }
 function createRadarCities(type) {
+  //the legacy basemap already labels every city
+  if (legacyMaps) { return }
   var header
   if (type == "main" || type == "spanish") {header = systemSettings.mainCity.radar} else if (type == "extra") {header = systemSettings.extraCity.cities[locationid].radar}
   var drClass = document.getElementsByClassName("doppler-radar")[0]
@@ -107,6 +109,7 @@ function createRadarIcons(type) {
   }
 }
 function createMiniradarCities() {
+  if (legacyMaps) { return }
   drClass = document.getElementsByClassName("radar-lbar")[0]
   for (var i = 0; i < systemSettings.LBar.radar.radarCities.length; i++) {
     var child = document.createElement("div")
@@ -187,5 +190,104 @@ function deleteTrafficMapIcons() {
   const div = toClass.getElementsByClassName("traffic-icons")[0]
   while (div.firstChild) {
       div.removeChild(div.firstChild)
+  }
+}
+//route badges on the traffic overview map. the map's own symbol layers don't draw on this style, so the
+//badges are html images over the map, positioned from the route numbers and shield types in its road data.
+var trafficBadgeShields = {
+  'us-interstate': { image: 'images/roadSigns/interstateHighwaySignLarge.png', text: '#ffffff', y: 0.58, priority: 0 },
+  'us-highway': { image: 'images/roadSigns/usHighwaySignLarge.png', text: '#000000', y: 0.52, priority: 1 },
+  'circle-white': { image: 'images/roadSigns/stateHighwaySignLarge.png', text: '#000000', y: 0.5, priority: 2 }
+};
+var trafficBadgeScale = 0.6; //of the 85x84 sign images
+var trafficBadgeMax = 10;
+var trafficBadgeSpacing = 120; //minimum pixels between badges
+var trafficBadgeCache = {};
+
+//loads the blank sign images once
+var trafficBadgeBases = Promise.all(Object.keys(trafficBadgeShields).map(function (shield) {
+  return new Promise(function (resolve) {
+    var img = new Image();
+    img.onload = function () { trafficBadgeShields[shield].img = img; resolve() };
+    img.onerror = function () { resolve() };
+    img.src = trafficBadgeShields[shield].image;
+  });
+}));
+
+//sign image with the route number drawn in
+function trafficBadgeURL(shield, ref) {
+  var key = shield + ref;
+  if (trafficBadgeCache[key]) { return trafficBadgeCache[key] }
+  var info = trafficBadgeShields[shield];
+  var canvas = document.createElement('canvas');
+  canvas.width = info.img.width;
+  canvas.height = info.img.height;
+  var ctx = canvas.getContext('2d');
+  ctx.drawImage(info.img, 0, 0);
+  var size = ref.length >= 3 ? 30 : 38;
+  ctx.font = "bold " + size + "px Interstate";
+  while (ctx.measureText(ref).width > canvas.width * 0.7) { size--; ctx.font = "bold " + size + "px Interstate" }
+  ctx.fillStyle = info.text;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ref, canvas.width / 2, canvas.height * info.y);
+  trafficBadgeCache[key] = canvas.toDataURL();
+  return trafficBadgeCache[key];
+}
+
+async function createTrafficBadges() {
+  await trafficBadgeBases;
+  var holder = document.querySelector(".traffic-overview .traffic-icons");
+  if (!holder || !trafficMap) { return }
+  var shields = Object.keys(trafficBadgeShields).filter(function (s) { return trafficBadgeShields[s].img });
+  var features = trafficMap.querySourceFeatures('composite', {
+    sourceLayer: 'road',
+    filter: ['all', ['match', ['get', 'class'], ['motorway', 'trunk'], true, false], ['has', 'ref'], ['match', ['get', 'shield'], shields, true, false]]
+  });
+  //the icon layer and the map are separate boxes; measure where the map sits relative to it
+  var mapBox = trafficMap.getContainer().getBoundingClientRect();
+  var holderBox = holder.getBoundingClientRect();
+  var scale = mapBox.width / trafficMap.getContainer().offsetWidth;
+  var dx = (mapBox.left - holderBox.left) / scale, dy = (mapBox.top - holderBox.top) / scale;
+  var size = 85 * trafficBadgeScale, margin = size;
+  var width = holder.offsetWidth, height = holder.offsetHeight;
+
+  //every on-screen point of each route, grouped by route
+  var routes = {};
+  features.forEach(function (feature) {
+    var key = feature.properties.shield + '|' + feature.properties.ref;
+    //points, lines and multilines all come back from the road layer
+    var walk = function (coords) {
+      if (typeof coords[0] == 'number') {
+        var p = trafficMap.project(coords);
+        var x = p.x + dx, y = p.y + dy;
+        if (x > margin && x < width - margin && y > margin && y < height - margin) {
+          (routes[key] = routes[key] || []).push([x, y]);
+        }
+        return;
+      }
+      coords.forEach(walk);
+    };
+    walk(feature.geometry.coordinates);
+  });
+  //interstates first, then US and state highways; longer stretches on screen first within each
+  var order = Object.keys(routes).sort(function (a, b) {
+    return (trafficBadgeShields[a.split('|')[0]].priority - trafficBadgeShields[b.split('|')[0]].priority) || (routes[b].length - routes[a].length);
+  });
+  var placed = [];
+  var center = [width / 2, height / 2];
+  for (var key of order) {
+    if (placed.length >= trafficBadgeMax) { break }
+    //the point nearest the middle of the map that isn't crowding a badge already placed
+    var spot = routes[key]
+      .filter(function (p) { return placed.every(function (q) { return Math.hypot(p[0] - q[0], p[1] - q[1]) >= trafficBadgeSpacing }) })
+      .sort(function (a, b) { return Math.hypot(a[0] - center[0], a[1] - center[1]) - Math.hypot(b[0] - center[0], b[1] - center[1]) })[0];
+    if (!spot) { continue }
+    placed.push(spot);
+    var parts = key.split('|');
+    var badge = document.createElement('div');
+    badge.className = 'icon';
+    badge.style.cssText = 'left:' + (spot[0] - size / 2) + 'px;top:' + (spot[1] - size / 2) + 'px;transform:scale(' + trafficBadgeScale + ');background-image:url(' + trafficBadgeURL(parts[0], parts[1]) + ');background-size:100% 100%';
+    holder.appendChild(badge);
   }
 }

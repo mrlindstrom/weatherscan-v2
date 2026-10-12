@@ -8,17 +8,133 @@ var locRadarTimestamps, locRadarAnimation;
 var satRadarTimestamps, satRadarAnimation;
 var miniRadarTimestamps, miniRadarAnimation;
 var locradarani, satradani, miniradarani;
+//count the doppler and radar/satellite showings, so cleanup from one showing skips a newer one of the same card
+var dopplerShowing = 0, satShowing = 0;
 mapboxgl.accessToken = "";
-function initializeRadars() {
+//map style from the original web simulator. the basemaps draw it without city labels,
+//and the overlays above the radar echoes draw only its boundaries, highways and city labels.
+//set to false to go back to the v2 basemap and amenity lines
+var legacyMaps = true;
+//a copy of the original account's style lives in maps/legacy so it doesn't depend on that account.
+//loadLegacyStyle() swaps this URL for the loaded style before any map is made
+var legacyStyle = "maps/legacy/style.json";
+//the "copy" layers are the drop shadows for the labels
+var legacyCityLayers = ['settlement-minor-label copy', 'settlement-major-label copy', 'settlement-minor-label', 'settlement-major-label'];
+var legacyOverlayLayers = legacyCityLayers.concat([
+  'admin-2-boundary-bg', 'admin-1-boundary-bg', 'admin-0-boundary-bg',
+  'admin-2-boundary', 'admin-1-boundary', 'admin-0-boundary', 'admin-0-boundary-disputed', 'country-boundaries',
+  'road-number-shield'
+]);
+//highway lines stay in the basemap, under the radar echoes; labels, shields and boundaries go over them
+function setupLegacyBase(map) {
+  //shields are drawn by the overlay; a basemap copy would sit underneath the overlay's highways
+  legacyCityLayers.concat(['road-number-shield']).forEach(function (layer) {
+    map.setLayoutProperty(layer, 'visibility', 'none');
+  });
+}
+function setupLegacyOverlay(map) {
+  map.getStyle().layers.forEach(function (layer) {
+    if (!legacyOverlayLayers.includes(layer.id)) {
+      map.setLayoutProperty(layer.id, 'visibility', 'none');
+    }
+  });
+  fixLegacyCityLabels(map);
+}
+function fixLegacyCityLabels(map) {
+  legacyCityLayers.forEach(function (layer) {
+    //the style shifts every dot 20px south of the city; put the dot on the city and the name above it
+    map.setPaintProperty(layer, 'icon-translate', [0, 0]);
+    map.setLayoutProperty(layer, 'text-anchor', 'bottom');
+    map.setLayoutProperty(layer, 'text-justify', 'center');
+    map.setLayoutProperty(layer, 'text-offset', [0, -0.5]);
+    //bigger cities win label collisions now that every name sits in the same spot above its dot
+    map.setLayoutProperty(layer, 'symbol-sort-key', ['get', 'symbolrank']);
+  });
+  getLegacyDot(map.getStyle().sprite).then(function (dot) {
+    if (!map.hasImage('legacy-dot')) { map.addImage('legacy-dot', dot) }
+    legacyCityLayers.forEach(function (layer) {
+      map.setLayoutProperty(layer, 'icon-image', 'legacy-dot');
+      map.setLayoutProperty(layer, 'icon-size', 1);
+    });
+  }).catch(function (error) {
+    console.error("legacy city dot", error);
+  });
+}
+
+//the style's dot is a 500x500 sprite drawn at 0.13 scale, mostly transparent padding,
+//and mapbox draws it up and to the left of the city. trimming it to a 16px image puts it on the city.
+var legacyDotPromise;
+function getLegacyDot(spriteURL) {
+  if (legacyDotPromise) { return legacyDotPromise }
+  //the bundled style's sprite is a plain URL; a mapbox:// one is fetched through the styles API
+  var spriteFile = function (ext) { return spriteURL + ext };
+  if (spriteURL.startsWith("mapbox://")) {
+    var base = spriteURL.replace("mapbox://sprites/", "https://api.mapbox.com/styles/v1/");
+    spriteFile = function (ext) { return base + "/sprite" + ext + "?access_token=" + map_key };
+  }
+  legacyDotPromise = fetch(spriteFile(".json"))
+    .then(function (response) { return response.json() })
+    .then(function (sprite) {
+      var rect = sprite['dot (1)'];
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = function () {
+          var full = document.createElement('canvas');
+          full.width = rect.width;
+          full.height = rect.height;
+          var fctx = full.getContext('2d');
+          fctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+          //find the opaque part of the sprite
+          var alpha = fctx.getImageData(0, 0, rect.width, rect.height).data;
+          var minX = rect.width, minY = rect.height, maxX = 0, maxY = 0;
+          for (var y = 0; y < rect.height; y++) {
+            for (var x = 0; x < rect.width; x++) {
+              if (alpha[(y * rect.width + x) * 4 + 3] > 0) {
+                minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+              }
+            }
+          }
+          var side = Math.max(maxX - minX, maxY - minY) + 1;
+          var size = Math.round(side * 0.13);
+          var dot = document.createElement('canvas');
+          dot.width = size;
+          dot.height = size;
+          var dctx = dot.getContext('2d');
+          dctx.drawImage(full, minX, minY, side, side, 0, 0, size, size);
+          resolve(dctx.getImageData(0, 0, size, size));
+        };
+        img.onerror = reject;
+        img.src = spriteFile(".png");
+      });
+    });
+  return legacyDotPromise;
+}
+function hideAllLayers(map) {
+  map.getStyle().layers.forEach(function (layer) {
+    map.setLayoutProperty(layer.id, 'visibility', 'none');
+  });
+}
+//mapbox only takes an absolute sprite URL, so the style file's relative one is resolved against this page
+async function loadLegacyStyle() {
+  if (!legacyMaps || typeof legacyStyle != "string") { return }
+  var style = await (await fetch(legacyStyle)).json();
+  style.sprite = new URL(style.sprite, window.location.href).href;
+  legacyStyle = style;
+}
+async function initializeRadars() {
+  await loadLegacyStyle();
   mapboxgl.accessToken = map_key;
   miniradar = new mapboxgl.Map({
     container: 'miniradar-basemap', // container id
-    style: mapStyle,
+    style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.LBar.radar.lon, systemSettings.LBar.radar.lat],
     zoom: systemSettings.LBar.radar.zoom,
     trackResize: false
   });
   miniradar.on('load', function () {
+    if (legacyMaps) { setupLegacyBase(miniradar); return }
     miniradar.setLayoutProperty('background', 'visibility', 'visible');//ocean
     miniradar.setLayoutProperty('hawaii local', 'visibility', 'visible');//hawaii mercator
     miniradar.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
@@ -46,12 +162,13 @@ function initializeRadars() {
 
   miniradarAmenitiesTrans = new mapboxgl.Map({
     container: 'miniradar-amenities-trans', // container id
-    style: mapStyle,
+    style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.LBar.radar.lon, systemSettings.LBar.radar.lat],
     zoom: systemSettings.LBar.radar.zoom,
     trackResize: false
   });
   miniradarAmenitiesTrans.on('load', function () {
+    if (legacyMaps) { setupLegacyOverlay(miniradarAmenitiesTrans); return }
     miniradarAmenitiesTrans.setLayoutProperty('background', 'visibility', 'none');//ocean
     miniradarAmenitiesTrans.setLayoutProperty('hawaii local', 'visibility', 'none');//hawaii mercator
     miniradarAmenitiesTrans.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
@@ -115,12 +232,13 @@ function initializeRadars() {
   mapboxgl.accessToken = map_key
   locradar = new mapboxgl.Map({
     container: 'radar-basemap', // container id
-    style: mapStyle,
+    style: legacyMaps ? legacyStyle : mapStyle,
     center: [0, 0],
     zoom: 7.2,
     trackResize: false
   });
   locradar.on('load', function () {
+    if (legacyMaps) { setupLegacyBase(locradar); return }
     locradar.setLayoutProperty('background', 'visibility', 'visible');//ocean
     locradar.setLayoutProperty('hawaii local', 'visibility', 'visible');//alaska mercator
     locradar.setLayoutProperty('hawaii regional', 'visibility', 'visible');//hawaii lambert
@@ -142,7 +260,7 @@ function initializeRadars() {
 
   satmap = new mapboxgl.Map({
     container: 'sat-basemap', // container id
-    style: mapStyle,
+    style: legacyMaps ? legacyStyle : mapStyle,
     center: [0, 0],
     zoom: satZoom,
     trackResize: false,
@@ -153,6 +271,7 @@ function initializeRadars() {
     },
   });
   satmap.on('load', function () {
+    if (legacyMaps) { setupLegacyBase(satmap); return }
     satmap.setLayoutProperty('background', 'visibility', 'visible');//ocean
     satmap.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
     satmap.setLayoutProperty('hawaii regional', 'visibility', 'visible');//hawaii lambert
@@ -233,7 +352,7 @@ function initializeRadars() {
 
   satAmenities = new mapboxgl.Map({
     container: 'sat-amenities', // container id
-    style: mapStyle,
+    style: legacyMaps ? legacyStyle : mapStyle,
     center: [0, 0],
     zoom: satZoom,
     trackResize: false,
@@ -245,6 +364,7 @@ function initializeRadars() {
   });
 
   satAmenities.on('load', function () {
+    if (legacyMaps) { setupLegacyOverlay(satAmenities); return }
     satAmenities.setLayoutProperty('background', 'visibility', 'none');//ocean
     satAmenities.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
     satAmenities.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
@@ -274,6 +394,8 @@ function initializeRadars() {
     trackResize: false
   });
   locradarAmenities.on('load', function () {
+    //the legacy basemap already has roads and county lines under the echoes
+    if (legacyMaps) { hideAllLayers(locradarAmenities); return }
     locradarAmenities.setLayoutProperty('background', 'visibility', 'none');//ocean
     locradarAmenities.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
     locradarAmenities.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
@@ -301,12 +423,13 @@ function initializeRadars() {
 
   locradarAmenitiesTrans = new mapboxgl.Map({
     container: 'radar-amenities-trans', // container id
-    style: mapStyle,
+    style: legacyMaps ? legacyStyle : mapStyle,
     center: [0, 0],
     zoom: 7.2,
     trackResize: false
   });
   locradarAmenitiesTrans.on('load', function () {
+    if (legacyMaps) { setupLegacyOverlay(locradarAmenitiesTrans); return }
     locradarAmenitiesTrans.setLayoutProperty('background', 'visibility', 'none');//ocean
     locradarAmenitiesTrans.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
     locradarAmenitiesTrans.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
@@ -383,27 +506,27 @@ async function animateLocalRadar() {
   if (validLayers.length === 0) {
     throw new Error("No radar layers available for animation.");
   }
+  //a loop still running from an earlier showing would step past the last frame
+  clearInterval(locradarani);
+  clearInterval(locRadarAnimation);
 
   validLayers.forEach((layerId) => radarEchoes.setLayoutProperty(layerId, "visibility", "none"));
   let frameidx = 0;
-  locradarani = setInterval(() => {
-    radarEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "none");
-    frameidx++;
-    radarEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "visible");
-    if (frameidx == validLayers.length - 1) {
-      clearInterval(locradarani);
-    }
-  }, 90)
-  locRadarAnimation = setInterval(() => {
-    locradarani = setInterval(() => {
+  //one pass through the frames. each pass stops the one before it and clears its own interval, since
+  //in a throttled background tab a pass can outlast the 4 second restart and the two would share frameidx
+  function playLoop() {
+    clearInterval(locradarani);
+    var pass = locradarani = setInterval(() => {
       radarEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "none");
       frameidx = (frameidx + 1) % validLayers.length;
       radarEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "visible");
       if (frameidx == validLayers.length - 1) {
-        clearInterval(locradarani);
+        clearInterval(pass);
       }
     }, 90)
-  }, 4000);
+  }
+  playLoop();
+  locRadarAnimation = setInterval(playLoop, 4000);
 }
 async function cleanupLocRadarLayers() {
   if (locRadarTimestamps == undefined) return;
@@ -469,25 +592,25 @@ async function animateSatRadar() {
   }
 
   validLayers.forEach((layerId) => satEchoes.setLayoutProperty(layerId, "visibility", "none"));
+  //spread the loop over about 3.2 seconds like the local doppler, however many frames come back
+  //(the API currently returns 16 frames, 15 minutes apart), leaving a pause on the last frame
+  var frameTime = Math.round(3200 / validLayers.length);
   let frameidx = 0;
-  satradani = setInterval(() => {
-    satEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "none");
-    frameidx++;
-    satEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "visible");
-    if (frameidx == validLayers.length - 1) {
-      clearInterval(satradani);
-    }
-  }, 83)
-  satRadarAnimation = setInterval(() => {
-    satradani = setInterval(() => {
+  //one pass through the frames, stopping the previous pass first (see animateLocalRadar)
+  function playLoop() {
+    clearInterval(satradani);
+    var pass = satradani = setInterval(() => {
       satEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "none");
       frameidx = (frameidx + 1) % validLayers.length;
       satEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "visible");
       if (frameidx == validLayers.length - 1) {
-        clearInterval(satradani);
+        clearInterval(pass);
       }
-    }, 83)
-  }, 4100);
+    }, frameTime)
+  }
+  clearInterval(satRadarAnimation);
+  playLoop();
+  satRadarAnimation = setInterval(playLoop, 4100);
 }
 async function cleanupSatRadarLayers() {
   if (satRadarTimestamps == undefined) return;

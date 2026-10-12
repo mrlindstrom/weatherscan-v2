@@ -163,15 +163,19 @@ async function getMainCity() {
         var queryURL = "https://api.weather.com/v3/location/search?query=" + mainquery + "&language=en-US&format=json&apiKey=" + systemSettings.apiKeys.api_key
         const data = await $.getJSON(queryURL)
 
+        //for a zip code the display name can be a neighborhood rather than the city, so use the postal city
+        var name = data.location.type[0] == "postal" && data.location.city[0] ? data.location.city[0] : data.location.displayName[0];
+
         // fcst/obs
         systemSettings.mainCity.timeZone = data.location.ianaTimeZone[0];
-        systemSettings.mainCity.locationName = data.location.displayName[0].replaceAll(" Charter Township", "").replaceAll(" Township", "");
-        systemSettings.mainCity.obsName = data.location.displayName[0];
-        systemSettings.mainCity.bulletinName = data.location.displayName[0] + " Area";
-        systemSettings.mainCity.almanacLocationName = data.location.displayName[0];
+        systemSettings.mainCity.locationName = name.replaceAll(" Charter Township", "").replaceAll(" Township", "");
+        systemSettings.mainCity.obsName = name;
+        systemSettings.mainCity.bulletinName = name + " Area";
+        systemSettings.mainCity.almanacLocationName = name;
         systemSettings.mainCity.lat = data.location.latitude[0];
         systemSettings.mainCity.lon = data.location.longitude[0];
         systemSettings.mainCity.icaoCode = data.location.icaoCode[0];
+        systemSettings.mainCity.state = data.location.adminDistrict[0];
     } else {
         var autoURL = "https://pro.ip-api.com/json/?key=AmUN9xAaQALVYu6&exposeDate=false"
         const data = await $.getJSON(autoURL)
@@ -191,6 +195,7 @@ async function getMainCity() {
         systemSettings.mainCity.almanacLocationName = data.city;
         systemSettings.mainCity.lat = data.lat;
         systemSettings.mainCity.lon = data.lon;
+        systemSettings.mainCity.state = data.regionName;
 
         systemSettings.mainCity.icaoCode = icaoData.location.stationId[icID];
     }
@@ -358,7 +363,36 @@ function getExtraRadar() {
     }
 }
 
+//largest cities in the main city's state, same dataset the original web simulator used
+const stateCitiesURL = "https://gist.githubusercontent.com/Miserlou/c5cd8364bf9b2420bb29/raw/2bf258763cdddd704f8ffd3ea9a3e81d25e2c6f6/cities.json";
+
+async function getStatePopularCities(state) {
+    if (!state) { return [] }
+    try {
+        const data = await $.getJSON(stateCitiesURL)
+        return data
+            .filter(c => c.state.toLowerCase() == state.toLowerCase())
+            .sort((a, b) => parseInt(b.population) - parseInt(a.population))
+            .slice(0, 10)
+            .map(c => ({
+                locationName: c.city,
+                lat: c.latitude,
+                lon: c.longitude,
+                header: c.latitude + "," + c.longitude
+            }))
+    } catch (error) {
+        console.error(error)
+        return []
+    }
+}
+
 async function getLBarCC() {
+    const stateCities = await getStatePopularCities(systemSettings.mainCity.state)
+    if (stateCities.length > 0) {
+        systemSettings.LBar.ccTicker.cities = stateCities
+        return
+    }
+
     var tickerArray = []
 
     async function grabTickerCities(lat,lon){
@@ -738,10 +772,122 @@ async function locationJS() {
     systemSettings.garden.header = await getCoordsLocID(systemSettings.garden.locationID)
 
     for (var i = 0; i < systemSettings.LBar.ccTicker.cities.length; i++) {
+        if (systemSettings.LBar.ccTicker.cities[i].header) { continue }
         systemSettings.LBar.ccTicker.cities[i].header = await getCoordsLocID(systemSettings.LBar.ccTicker.cities[i].locationID)
     }
 
     for (var i = 0; i < systemSettings.LBar.ccTicker.travelCities.length; i++) {
         systemSettings.LBar.ccTicker.travelCities[i].header = await getCoordsLocID(systemSettings.LBar.ccTicker.travelCities[i].locationID)
     }
+}
+//boat & beach: fills in whichever of the buoy, coastal zone, tide stations and sunrise/sunset airport
+//are left blank in the config. the buoy and tide stations are picked near the coast (the closest point
+//of the nearest coastal waters zone) rather than near the city, which can be well inland or up a ship channel.
+var beachAutoFound = false;
+var marineZonesURL = "https://mapservices.weather.noaa.gov/static/rest/services/nws_reference_maps/nws_reference_map/MapServer/5/query";
+var tideStationsURL = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions";
+var beachSearchMiles = 150;
+
+async function autoFindBeach() {
+    if (beachAutoFound) { return }
+    beachAutoFound = true;
+    var beach = systemSettings.beach;
+    var home = [Number(systemSettings.mainCity.lon), Number(systemSettings.mainCity.lat)];
+    //rough miles between two [lon, lat] points
+    var miles = function (a, b) {
+        return Math.hypot((a[0] - b[0]) * Math.cos(b[1] * Math.PI / 180), a[1] - b[1]) * 69;
+    };
+
+    //coastal zone: the nearest "coastal waters" zone, or the nearest of any kind (lakes, bays) if there isn't one
+    var coast = home;
+    try {
+        var params = new URLSearchParams({
+            where: '1=1', geometry: home.join(','), geometryType: 'esriGeometryPoint', inSR: '4326',
+            distance: String(beachSearchMiles), units: 'esriSRUnit_StatuteMile',
+            outFields: 'id,wfo,name', returnGeometry: 'true', outSR: '4326',
+            maxAllowableOffset: '0.02', geometryPrecision: '3', f: 'geojson'
+        });
+        var zones = (await (await fetch(marineZonesURL + '?' + params.toString())).json()).features;
+        zones.forEach(function (zone) {
+            zone.distance = Infinity;
+            var walk = function (coords) {
+                if (Array.isArray(coords[0])) { coords.forEach(walk); return }
+                var d = miles(coords, home);
+                if (d < zone.distance) { zone.distance = d; zone.closest = coords }
+            };
+            walk(zone.geometry.coordinates);
+        });
+        zones.sort(function (a, b) { return a.distance - b.distance });
+        var zone = zones.find(function (z) { return /coastal waters/i.test(z.properties.name) }) || zones[0];
+        if (zone) {
+            coast = zone.closest;
+            if (beach.coastalForecast.office == "" && beach.coastalForecast.zone == "") {
+                beach.coastalForecast.office = zone.properties.wfo;
+                beach.coastalForecast.zone = zone.properties.id;
+                //grouped zones share their header's name lines, so use this zone's own name, shortened to fit the
+                //card header: "Coastal waters from High Island to Freeport TX out 20 NM" -> "High Island to Freeport"
+                if (beach.coastalForecast.zoneName == "") {
+                    beach.coastalForecast.zoneName = zone.properties.name
+                        .replace(/^(coastal )?waters (from )?/i, '')
+                        .replace(/\s+[A-Z]{2}\s+(out|from)\b.*$/, '')
+                        .replace(/\s+(out|from) \d+.*$/i, '')
+                        .replace(/\s[A-Z]{2}\sto\s/, ' to ')
+                        .replace(/\s[A-Z]{2}$/, '');
+                }
+            }
+        }
+    } catch (error) {
+        console.error("beach coastal zone", error);
+    }
+
+    //surf: the nearest moored buoy with a current wave report
+    if (beach.surfReport.buoy == "") {
+        try {
+            var xml = new DOMParser().parseFromString(await $.get('/ndbcstations', null, null, 'text'), 'text/xml');
+            var buoys = Array.from(xml.getElementsByTagName('station'))
+                .filter(function (s) { return s.getAttribute('type') == 'buoy' && s.getAttribute('met') == 'y' })
+                .map(function (s) {
+                    var at = [Number(s.getAttribute('lon')), Number(s.getAttribute('lat'))];
+                    return { id: s.getAttribute('id'), name: s.getAttribute('name'), distance: miles(at, coast) };
+                })
+                .filter(function (b) { return b.distance <= beachSearchMiles })
+                .sort(function (a, b) { return a.distance - b.distance })
+                .slice(0, 6);
+            for (var buoy of buoys) {
+                var report = await $.get('/surf/' + buoy.id.toLowerCase() + '.txt');
+                if (report.includes("Wind Wave:") && !report.includes("more than two hours old")) {
+                    beach.surfReport.buoy = buoy.id;
+                    if (beach.surfReport.displayName == "") {
+                        //"GALVESTON,TX -  22 NM East of Galveston, TX" -> "Galveston, TX"
+                        beach.surfReport.displayName = buoy.name.split(' - ')[0].replace(/,(\S)/, ', $1').toLowerCase()
+                            .replace(/\b[a-z]/g, function (c) { return c.toUpperCase() }).replace(/, ([A-Za-z]{2})$/, function (m, st) { return ', ' + st.toUpperCase() });
+                    }
+                    break;
+                }
+            }
+        } catch (error) {
+            console.error("beach buoy", error);
+        }
+    }
+
+    //tides: the two tide stations closest to the coast
+    if (beach.tides.stations.every(function (s) { return s.id == "" })) {
+        try {
+            var stations = (await (await fetch(tideStationsURL)).json()).stations
+                .map(function (s) { return { id: s.id, name: s.name, distance: miles([s.lng, s.lat], coast) } })
+                .filter(function (s) { return s.distance <= beachSearchMiles })
+                .sort(function (a, b) { return a.distance - b.distance })
+                .slice(0, 2);
+            beach.tides.stations = stations.map(function (s) { return { id: s.id, name: s.name } });
+        } catch (error) {
+            console.error("beach tide stations", error);
+        }
+    }
+
+    //sunrise/sunset on the tides card
+    if (beach.tides.almanac.icaoCode == "") {
+        beach.tides.almanac.icaoCode = systemSettings.mainCity.icaoCode;
+        beach.tides.almanac.airportName = systemSettings.mainCity.locationName;
+    }
+    console.log("[beach] coastal zone " + beach.coastalForecast.office + " " + beach.coastalForecast.zone + ", buoy " + beach.surfReport.buoy + " (" + beach.surfReport.displayName + "), tides " + beach.tides.stations.map(function (s) { return s.name }).join(" / "));
 }

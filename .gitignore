@@ -123,3 +123,9 @@ typings/
 .DS_Store
 .vscode
 
+
+# old web-only simulator (local reference)
+weather/
+
+# personal config with live keys; configs/yourConfig.example.json is the tracked template
+main/configs/yourConfig.json
