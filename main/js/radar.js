@@ -26,7 +26,7 @@ var legacyMaps = true;
 //loadLegacyStyle() swaps this URL for the loaded style before any map is made
 var legacyStyle = "maps/legacy/style.json";
 //the "copy" layers are the drop shadows for the labels
-var legacyCityLayers = ['settlement-minor-label copy', 'settlement-major-label copy', 'settlement-minor-label', 'settlement-major-label', 'main-city-label copy', 'main-city-label'];
+var legacyCityLayers = ['settlement-minor-label copy', 'settlement-major-label copy', 'settlement-minor-label', 'settlement-major-label'];
 var legacyOverlayLayers = legacyCityLayers.concat([
   'admin-2-boundary-bg', 'admin-1-boundary-bg', 'admin-0-boundary-bg',
   'admin-2-boundary', 'admin-1-boundary', 'admin-0-boundary', 'admin-0-boundary-disputed', 'country-boundaries',
@@ -144,29 +144,6 @@ function hideAllLayers(map) {
   });
 }
 //mapbox only takes an absolute sprite URL, so the style file's relative one is resolved against this page
-//the main city always gets a dot and name, even a small town next to bigger ones: a copy of the major city
-//label layers, on top of the style so it's placed first and wins any collision (hiding the map's own label for
-//it too), at the biggest size (symbolrank 0). it's one of legacyCityLayers, so it's styled and shown with them
-function addMainCityLabel(style) {
-  var city = systemSettings.mainCity;
-  style.sources['main-city'] = {
-    type: 'geojson',
-    data: { type: 'Feature', geometry: { type: 'Point', coordinates: [Number(city.lon), Number(city.lat)] }, properties: { name: city.locationName, symbolrank: 0 } }
-  };
-  ['settlement-major-label copy', 'settlement-major-label'].forEach(function (id) {
-    var layer = JSON.parse(JSON.stringify(style.layers.find(function (l) { return l.id == id })));
-    layer.id = id.replace('settlement-major-label', 'main-city-label');
-    layer.source = 'main-city';
-    delete layer['source-layer'];
-    delete layer.filter;
-    delete layer.minzoom;
-    delete layer.maxzoom;
-    layer.layout['text-field'] = ['get', 'name'];
-    layer.layout['text-allow-overlap'] = true;
-    layer.layout['icon-allow-overlap'] = true;
-    style.layers.push(layer);
-  });
-}
 function countryLabelsShown() {
   return systemSettings.appearanceSettings.countryLabels == true;
 }
@@ -178,7 +155,6 @@ async function loadLegacyStyle() {
   style.layers.filter(function (layer) { return layer.id == 'country-label' }).forEach(function (layer) {
     layer.layout = Object.assign({}, layer.layout, { visibility: countryLabelsShown() ? 'visible' : 'none' });
   });
-  addMainCityLabel(style);
   legacyStyle = style;
   //the label maps draw their text from these page fonts, so they have to be loaded first
   await Promise.all(Object.values(legacyLabelFonts).map(function (family) {
