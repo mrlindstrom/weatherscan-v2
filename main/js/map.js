@@ -237,7 +237,7 @@ function trafficBadgeURL(shield, ref) {
 }
 
 //sign for a traffic flow route's routeIcon: images/roadSigns/<name>.png when there is one, otherwise names
-//like interstate_45, usRoute_59 or stateRoute_249 are drawn on the blank signs, so any city's routes get one
+//like interstate_95, usRoute_66 or stateRoute_1 are drawn on the blank signs, so any city's routes get one
 var roadSignPatterns = { interstate: 'us-interstate', usRoute: 'us-highway', stateRoute: 'circle-white' };
 async function roadSignURL(name) {
   var file = "images/roadSigns/" + name + ".png";
