@@ -3241,9 +3241,12 @@ function buildHeader(){
   }
   $("#slides-scroller .package-list").empty()
   let packageTotal = 0;
-  var n = 1;
-  for(let i = gidx; i < slideSettings.order[0].slideLineup.length; i++, n++){
-    if (n >= slideSettings.order[orderidx].slideLineup.length) {n = 0}
+  //every package, starting at the current one and wrapping around, since the list rotates as packages play
+  //(starting partway in, from a card jump or the end of severe mode, used to leave out the ones before it)
+  var lineupLength = slideSettings.order[0].slideLineup.length;
+  for(let k = 0; k < lineupLength; k++){
+    let i = (gidx + k) % lineupLength;
+    let n = (i + 1) % lineupLength;
     let packageName = "";
     try {
       if((slideSettings.order[orderidx].slideLineup[i].group == "forecast" || 
@@ -3258,13 +3261,13 @@ function buildHeader(){
       console.error(error)
       //absolutely nothing
     }
-    if(i == slideSettings.order[0].slideLineup.length - 1){
-      if((slideSettings.order[orderidx].slideLineup[i].group == "forecast" || 
-        slideSettings.order[orderidx].slideLineup[i].group == "minicoreone" || 
-        slideSettings.order[orderidx].slideLineup[i].group == "minicoretwo") && 
-        (slideSettings.order[orderidx].slideLineup[0].group == "forecast" || 
-          slideSettings.order[orderidx].slideLineup[0].group == "minicoreone" || 
-          slideSettings.order[orderidx].slideLineup[0].group == "minicoretwo")){
+    if(k == lineupLength - 1){
+      if((slideSettings.order[orderidx].slideLineup[i].group == "forecast" ||
+        slideSettings.order[orderidx].slideLineup[i].group == "minicoreone" ||
+        slideSettings.order[orderidx].slideLineup[i].group == "minicoretwo") &&
+        (slideSettings.order[orderidx].slideLineup[gidx].group == "forecast" ||
+          slideSettings.order[orderidx].slideLineup[gidx].group == "minicoreone" ||
+          slideSettings.order[orderidx].slideLineup[gidx].group == "minicoretwo")){
         $('#slides-scroller .package-list .divider-arrow').last().remove();
         break;
       }
@@ -3332,7 +3335,7 @@ function buildHeader(){
         if (e != systemSettings.extraCity.cities.length-1) $('#slides-scroller .package-list').append(`<span class="shrinkY divider-arrow"> < </span>`);
       }
     }
-    if(i < slideSettings.order[0].slideLineup.length - 1){
+    if(k < lineupLength - 1){
       $('#slides-scroller .package-list').append(`<span class="shrinkY divider-arrow"> < </span>`);
     }
     packageTotal++;
