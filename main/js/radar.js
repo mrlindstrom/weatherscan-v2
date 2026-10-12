@@ -44,6 +44,26 @@ function setupLegacyOverlay(map) {
     }
   });
   fixLegacyCityLabels(map);
+  styleRadarCityLabels(map, map === miniradarAmenitiesTrans ? radarCityLook.mini : radarCityLook.radar);
+}
+//v2 drew the radar city names as page text: light grey with a dark outline and a drop shadow, 43px Frutiger
+//Black on the doppler and 28px Interstate on the mini radar. the style's own labels are made to match:
+//sizes by city rank (biggest first), and the "copy" layers under the names become the shadow
+var radarCityLook = {
+  radar: { sizes: [42, 38, 34], outline: 1.5, shadow: [2, 5] },
+  mini: { sizes: [28, 26, 24], outline: 1, shadow: [2, 4] }
+};
+function styleRadarCityLabels(map, look) {
+  var size = ['step', ['get', 'symbolrank'], look.sizes[0], 9, look.sizes[1], 11, look.sizes[2]];
+  legacyCityLayers.forEach(function (layer) {
+    var shadow = layer.endsWith(' copy');
+    map.setLayoutProperty(layer, 'text-size', size);
+    map.setPaintProperty(layer, 'text-color', shadow ? 'rgba(20, 20, 20, 1)' : 'rgb(230, 230, 230)');
+    map.setPaintProperty(layer, 'text-halo-color', 'rgba(20, 20, 20, 1)');
+    map.setPaintProperty(layer, 'text-halo-width', look.outline);
+    map.setPaintProperty(layer, 'text-halo-blur', shadow ? 1 : 0);
+    map.setPaintProperty(layer, 'text-translate', shadow ? look.shadow : [0, 0]);
+  });
 }
 function fixLegacyCityLabels(map) {
   legacyCityLayers.forEach(function (layer) {
@@ -127,6 +147,16 @@ async function loadLegacyStyle() {
   var style = await (await fetch(legacyStyle)).json();
   style.sprite = new URL(style.sprite, window.location.href).href;
   legacyStyle = style;
+  //the label maps draw their text from these page fonts, so they have to be loaded first
+  await Promise.all(Object.values(legacyLabelFonts).map(function (family) {
+    return Promise.all([document.fonts.load("normal 40px " + family), document.fonts.load("bold 40px " + family)]).catch(function () {});
+  }));
+}
+//city names on the radar maps in v2's fonts rather than the style's Hind: mapbox draws every label on these
+//maps in the browser from the page's own font (localFontFamily) instead of downloading the style's glyphs
+var legacyLabelFonts = { radar: "'Frutiger Black'", mini: "'Interstate'" };
+function legacyLabelOptions(font) {
+  return legacyMaps ? { localFontFamily: legacyLabelFonts[font] } : {};
 }
 async function initializeRadars() {
   await loadLegacyStyle();
@@ -166,6 +196,7 @@ async function initializeRadars() {
   });
 
   miniradarAmenitiesTrans = new mapboxgl.Map({
+    ...legacyLabelOptions('mini'),
     container: 'miniradar-amenities-trans', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.LBar.radar.lon, systemSettings.LBar.radar.lat],
@@ -305,6 +336,7 @@ async function initializeRadars() {
   });
 
   satAmenities = new mapboxgl.Map({
+    ...legacyLabelOptions('radar'),
     container: 'sat-amenities', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
@@ -376,6 +408,7 @@ async function initializeRadars() {
   });
 
   locradarAmenitiesTrans = new mapboxgl.Map({
+    ...legacyLabelOptions('radar'),
     container: 'radar-amenities-trans', // container id
     style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
