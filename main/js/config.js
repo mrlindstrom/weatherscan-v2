@@ -30,7 +30,8 @@ var systemSettings = {
     backgroundImage:"wxscan_default_bg_new",
     condensedCrawlFont: false,
     weatherReadyLogo: 1,
-    countryLabels: false //country names like "United States" on the maps
+    countryLabels: false, //country names like "United States" on the maps
+    mapLook: "legacy" //"legacy" (the original web simulator's map) or "intellistar" (v2's IntelliStar basemap)
   },
   audioSettings: {
     enableMusic: true,

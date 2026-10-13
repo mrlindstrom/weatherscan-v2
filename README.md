@@ -32,6 +32,7 @@ Need support beyond the scope of this README? A guide for configuring this simul
 2. Go to `/main/configs` and make a copy of `yourConfig.example.json` named `yourConfig.json`. Your copy is gitignored, so your keys and settings stay out of git. (Until you make one, the simulator runs off the example.)
 3. Open `yourConfig.json`. You can look through the options and change anything if needed.
    - The maps leave out country names ("United States") by default. Set `appearanceSettings.countryLabels` to `true` to show them.
+   - `appearanceSettings.mapLook` picks the maps' look. `"legacy"` (the default) is the original web simulator's map, with real city labels. `"intellistar"` is v2's IntelliStar basemap: IntelliStar artwork and lines on the radar and the data cards, with the radar's city names placed by the simulator as in v2. Its Alaska and Hawaii artwork no longer loads, so those areas have no basemap with that look.
 4. If you want the traffic segment, put a *TomTom* API key in `traf_key` (line 7). Keys are free at [developer.tomtom.com](https://developer.tomtom.com) with no credit card; the free plan refuses requests past its daily allowance rather than billing, and the simulator stops itself at 2,000 requests a day. Again, this is optional and only if you want the traffic segment - leaving it blank will erase the traffic segment from your lineup cleanly.
    - Each route in `traffic.routes` names its sign in `routeIcon`. That can be any image in `main/images/roadSigns` (without `.png`), or a name like `interstate_95`, `usRoute_66` or `stateRoute_1`, which is drawn on the matching blank sign when there's no image by that name.
 5. The beach package's water temperature map reads NOAA CoastWatch, which doesn't allow browser requests from other sites. To show it, set `corsProxy` (line 10) to the URL of a [CORS Anywhere](https://github.com/Rob--W/cors-anywhere) instance you run. Left blank, that one card shows as unavailable.
@@ -55,6 +56,7 @@ These go after a `#` at the end of the URL, since the `?` part is the location (
 | `&package=extralocal` | Pick the package, for cards that are in more than one (`currentConditions`, `extendedForecast` and so on). If your config's `packageSettings` doesn't include that package, it's added for that page load only. |
 | `&hold` | Keep replaying the card instead of moving on. |
 | `alert=Tornado Warning` | Start with a simulated alert active (see below). Separate several with commas. |
+| `maplook=intellistar` | Try the other map look (`intellistar` or `legacy`) for that page load, without changing `mapLook` in your config. |
 
 Examples:
 

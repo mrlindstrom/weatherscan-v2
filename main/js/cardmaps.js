@@ -75,9 +75,10 @@ function initializeCardMaps() {
   $(mapCards.estimatedPrecip.container).after(cardMapDiv);
 
   cardMap = new mapboxgl.Map({
-    ...legacyLabelOptions('radar'),
+    //city names in frutiger with either look
+    localFontFamily: legacyLabelFonts.radar,
     container: cardMapDiv,
-    style: legacyStyle,
+    style: legacyMaps ? legacyStyle : mapStyle,
     center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
     zoom: cardMapZoom,
     trackResize: false,
@@ -88,10 +89,14 @@ function initializeCardMaps() {
   //frame that a hidden map never draws, which held all of its data back until the first map card showed
   cardMap.once('style.load', function () {
     cardMapReady = true;
-    //no road shields, city labels with the dot fix
-    cardMap.setLayoutProperty('road-number-shield', 'visibility', 'none');
-    fixLegacyCityLabels(cardMap);
-    styleRadarCityLabels(cardMap, radarCityLook.radar);
+    if (legacyMaps) {
+      //no road shields, city labels with the dot fix
+      cardMap.setLayoutProperty('road-number-shield', 'visibility', 'none');
+      fixLegacyCityLabels(cardMap);
+      styleRadarCityLabels(cardMap, radarCityLook.radar);
+    } else {
+      setupIntellistarCardMap();
+    }
     //travel weather "Sct" pattern, also used for the legend box so they match
     var sct = scatteredPattern();
     var streak = scatteredStreak();
@@ -102,6 +107,50 @@ function initializeCardMaps() {
     setInterval(loadCardMapData, cardMapRefresh);
     if (activeMapCard) { showCardMap(activeMapCard) }
   });
+}
+
+//appearanceSettings.mapLook "intellistar": v2's IntelliStar style. its land and water are one raster picture
+//(the "conus merc" artwork, or "conus sat" drawn for lambert on the national map) under IntelliStar 2 lines,
+//set up the way v2's own data maps had it (datamaps.js): state, coast and country lines, no counties or roads.
+//its alaska and hawaii artwork no longer loads, so those stay off
+var intellistarCardLayers = {
+  'background': 'visible', 'conus merc': 'visible', 'conus sat': 'none',
+  'hawaii local': 'none', 'hawaii regional': 'none', 'alaska': 'none',
+  'i2-county-lines-conus-ak-hi-81h5x4': 'none', 'cb-2019-us-state-20m-nocoast-7m1rrd': 'visible',
+  'i2-coastlines-conus-ak-hi-06wtga': 'visible', 'country-boundaries': 'visible',
+  'i2-road-vectors-conus-ak-hi-4r25d3': 'none', 'i2-road-vectors-conus-ak-hi-4r25d3 copy': 'none',
+  'i2-road-vectors-conus-ak-hi-4r25d3 (2)': 'none', 'i2-road-vectors-conus-ak-hi-4r25d3 (4)': 'none',
+  'place-label': 'none', 'place-label copy': 'visible', 'airport-label': 'none'
+};
+//the ocean in the IntelliStar artwork, for the golf map's water mask
+var intellistarOcean = 'rgb(0, 28, 110)';
+//its city labels are switched off (v2 drew city names as page text). the copy layer has IntelliStar's locator dot;
+//its names are turned on and styled like the legacy look's
+var intellistarCityLayer = 'place-label copy';
+function setupIntellistarCardMap() {
+  Object.keys(intellistarCardLayers).forEach(function (layer) {
+    cardMap.setLayoutProperty(layer, 'visibility', intellistarCardLayers[layer]);
+  });
+  cardMap.setPaintProperty('cb-2019-us-state-20m-nocoast-7m1rrd', 'line-width', 5.5);
+  cardMap.setPaintProperty('i2-coastlines-conus-ak-hi-06wtga', 'line-width', 4);
+  cardMap.setPaintProperty('country-boundaries', 'line-width', 4);
+  var look = radarCityLook.radar;
+  cardMap.setLayoutProperty(intellistarCityLayer, 'text-variable-anchor', undefined);
+  cardMap.setLayoutProperty(intellistarCityLayer, 'text-radial-offset', undefined);
+  cardMap.setLayoutProperty(intellistarCityLayer, 'text-anchor', 'bottom');
+  cardMap.setLayoutProperty(intellistarCityLayer, 'text-offset', [0, -0.5]);
+  cardMap.setLayoutProperty(intellistarCityLayer, 'icon-anchor', 'center');
+  cardMap.setLayoutProperty(intellistarCityLayer, 'text-size', ['step', ['get', 'symbolrank'], look.sizes[0], 9, look.sizes[1], 11, look.sizes[2]]);
+  cardMap.setLayoutProperty(intellistarCityLayer, 'symbol-sort-key', ['get', 'symbolrank']);
+  cardMap.setPaintProperty(intellistarCityLayer, 'text-opacity', 1);
+  cardMap.setPaintProperty(intellistarCityLayer, 'text-color', 'rgb(230, 230, 230)');
+  cardMap.setPaintProperty(intellistarCityLayer, 'text-halo-color', 'rgba(20, 20, 20, 1)');
+  cardMap.setPaintProperty(intellistarCityLayer, 'text-halo-width', look.outline);
+}
+//the layer the card data goes under: the boundaries and labels
+function cardMapLinesLayer() {
+  //the IntelliStar lines all come after its county lines (hidden here) and the artwork before them
+  return legacyMaps ? 'admin-2-boundary-bg' : 'i2-county-lines-conus-ak-hi-81h5x4';
 }
 
 function loadCardMapData() {
@@ -144,10 +193,17 @@ function showCardMap(card) {
   var national = mapCards[card].national == true;
   cardMap.setProjection(national ? cardMapNationalProjection : 'mercator');
   cardMap.jumpTo(national ? cardMapNationalView : { center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat], zoom: cardMapZoom });
-  legacyCityLayers.forEach(function (layer) {
-    cardMap.setLayoutProperty(layer, 'visibility', national ? 'none' : 'visible');
-  });
-  cardMap.setLayoutProperty('country-label', 'visibility', !national && countryLabelsShown() ? 'visible' : 'none');
+  if (legacyMaps) {
+    legacyCityLayers.forEach(function (layer) {
+      cardMap.setLayoutProperty(layer, 'visibility', national ? 'none' : 'visible');
+    });
+    cardMap.setLayoutProperty('country-label', 'visibility', !national && countryLabelsShown() ? 'visible' : 'none');
+  } else {
+    //IntelliStar has separate artwork drawn for the lambert national view
+    cardMap.setLayoutProperty(intellistarCityLayer, 'visibility', national ? 'none' : 'visible');
+    cardMap.setLayoutProperty('conus merc', 'visibility', national ? 'none' : 'visible');
+    cardMap.setLayoutProperty('conus sat', 'visibility', national ? 'visible' : 'none');
+  }
   //maps measure themselves wrong while #slides is scaled
   setTimeout(() => {
     var scale = $("#slides").css("scale");
@@ -197,7 +253,7 @@ function setCardMapFill(card, data, paint, suffix) {
     return;
   }
   cardMap.addSource(id, { type: 'geojson', data: data });
-  cardMap.addLayer({ id: id, type: 'fill', source: id, layout: { visibility: cardLayerVisibility(card) }, paint: paint }, 'admin-2-boundary-bg');
+  cardMap.addLayer({ id: id, type: 'fill', source: id, layout: { visibility: cardLayerVisibility(card) }, paint: paint }, cardMapLinesLayer());
 }
 
 async function loadPrecipForecast() {
@@ -278,7 +334,7 @@ async function loadEstimatedPrecip() {
       cardMap.getSource(id).updateImage({ url: url, coordinates: coordinates });
     } else {
       cardMap.addSource(id, { type: 'image', url: url, coordinates: coordinates });
-      cardMap.addLayer({ id: id, type: 'raster', source: id, layout: { visibility: cardLayerVisibility('estimatedPrecip') }, paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 } }, 'admin-2-boundary-bg');
+      cardMap.addLayer({ id: id, type: 'raster', source: id, layout: { visibility: cardLayerVisibility('estimatedPrecip') }, paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 } }, cardMapLinesLayer());
     }
     weatherData.estimatedPrecipMapUnavailable = false;
   } catch (error) {
@@ -350,7 +406,7 @@ async function loadTravelWeather() {
           'icon-allow-overlap': true, 'icon-ignore-placement': true,
           'icon-rotation-alignment': 'viewport', 'icon-pitch-alignment': 'viewport'
         }
-      }, 'admin-2-boundary-bg');
+      }, cardMapLinesLayer());
     }
     placeScatteredStreaks();
     setCardMapFill('travelWeather', collection(byKind.mix.concat(byKind.icy, byKind.snow)), {
@@ -390,13 +446,18 @@ async function loadGolfIndex() {
       cardMap.getSource(id).updateImage({ url: url, coordinates: coordinates });
     } else {
       cardMap.addSource(id, { type: 'image', url: url, coordinates: coordinates });
-      //the style draws its land fill above its water, so the index goes over the land (under the hillshade)
-      //and a copy of the water layer goes back on top so only land is colored
-      cardMap.addLayer({ id: id, type: 'raster', source: id, layout: { visibility: cardLayerVisibility('golfIndex') }, paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 0 } }, 'hillshade');
-      var water = cardMap.getStyle().layers.find(function (layer) { return layer.id == 'water' });
-      var waterMask = { id: id + '-water', type: 'fill', source: water.source, 'source-layer': water['source-layer'], layout: { visibility: cardLayerVisibility('golfIndex') }, paint: water.paint };
-      if (water.filter) { waterMask.filter = water.filter }
-      cardMap.addLayer(waterMask, 'hillshade');
+      //the legacy style draws its land fill above its water, so the index goes over the land (under the hillshade)
+      //and a copy of the water layer goes back on top so only land is colored. the IntelliStar artwork has no
+      //water layer of its own, so the mask there is the streets tiles' water in the artwork's ocean color
+      var before = legacyMaps ? 'hillshade' : cardMapLinesLayer();
+      cardMap.addLayer({ id: id, type: 'raster', source: id, layout: { visibility: cardLayerVisibility('golfIndex') }, paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 0 } }, before);
+      var waterMask = { id: id + '-water', type: 'fill', source: 'composite', 'source-layer': 'water', layout: { visibility: cardLayerVisibility('golfIndex') }, paint: { 'fill-color': intellistarOcean } };
+      if (legacyMaps) {
+        var water = cardMap.getStyle().layers.find(function (layer) { return layer.id == 'water' });
+        waterMask = { id: id + '-water', type: 'fill', source: water.source, 'source-layer': water['source-layer'], layout: { visibility: cardLayerVisibility('golfIndex') }, paint: water.paint };
+        if (water.filter) { waterMask.filter = water.filter }
+      }
+      cardMap.addLayer(waterMask, before);
     }
     //noon that day, so the time zone can't push it to the day before
     $(".golf-index .legend .day").text(dateFns.format(new Date(day + "T12:00:00"), "EEEE"));
@@ -411,6 +472,9 @@ async function loadGolfIndex() {
 //smooth image from a regular lat/lon grid of values (rows north to south), drawn in web mercator to
 //line up with the map. colorFor turns a blended value into [r, g, b], or null to leave it clear.
 function gridImage(values, grid, b, colorFor) {
+  return gridCanvas(values, grid, b, colorFor).toDataURL();
+}
+function gridCanvas(values, grid, b, colorFor) {
   var width = 480, height = 320;
   var canvas = document.createElement('canvas');
   canvas.width = width;
@@ -445,7 +509,50 @@ function gridImage(values, grid, b, colorFor) {
     }
   }
   ctx.putImageData(pixels, 0, 0);
-  return canvas.toDataURL();
+  return canvas;
+}
+
+//keeps only the parts of a gridCanvas (drawn in web mercator over b) where the IntelliStar artwork is ocean blue,
+//so data stops at the coast the viewer sees. the artwork's own tiles for the area are drawn into a mask at the
+//canvas's size and its water picked out by color (its lakes, marshes and small rivers are painted as land)
+var intellistarArtwork = "https://api.mapbox.com/v4/freakydreakylol.i1basemaphq/";
+async function clipToArtworkWater(canvas, b) {
+  var z = 5, n = Math.pow(2, z);
+  var tileX = function (lon) { return (lon + 180) / 360 * n };
+  var tileY = function (lat) { return (1 - Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / Math.PI) / 2 * n };
+  var x0 = tileX(b.west), x1 = tileX(b.east), y0 = tileY(b.north), y1 = tileY(b.south);
+  var mask = document.createElement('canvas');
+  mask.width = canvas.width;
+  mask.height = canvas.height;
+  var mctx = mask.getContext('2d');
+  var tileWidth = canvas.width / (x1 - x0), tileHeight = canvas.height / (y1 - y0);
+  var tiles = [];
+  for (var x = Math.floor(x0); x <= Math.floor(x1); x++) {
+    for (var y = Math.floor(y0); y <= Math.floor(y1); y++) { tiles.push([x, y]) }
+  }
+  await Promise.all(tiles.map(function (tile) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () {
+        mctx.drawImage(img, (tile[0] - x0) * tileWidth, (tile[1] - y0) * tileHeight, tileWidth, tileHeight);
+        resolve();
+      };
+      //outside the artwork there's no tile, and no water drawn there either
+      img.onerror = resolve;
+      img.src = intellistarArtwork + z + '/' + tile[0] + '/' + tile[1] + '.png?access_token=' + map_key;
+    });
+  }));
+  //the artwork's ocean is about rgb(0, 28, 110); its land is green and brown
+  var pixels = mctx.getImageData(0, 0, mask.width, mask.height);
+  for (var i = 0; i < pixels.data.length; i += 4) {
+    var r = pixels.data[i], g = pixels.data[i + 1], bl = pixels.data[i + 2];
+    pixels.data[i + 3] = bl > 80 && bl > r + 50 && bl > g + 40 ? 255 : 0;
+  }
+  mctx.putImageData(pixels, 0, 0);
+  var ctx = canvas.getContext('2d');
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.drawImage(mask, 0, 0);
 }
 
 function hexToRGB(hex) {
@@ -522,7 +629,7 @@ async function loadSnowfallForecast() {
       for (var p = start; p <= end; p++) { total += forecast.daypart[0].qpfSnow[p] || 0 }
       return total;
     });
-    setCardMapImage('snowfallForecast', gridImage(values, snowGrid, b, bandColor(snowBands)), b, 'admin-2-boundary-bg');
+    setCardMapImage('snowfallForecast', gridImage(values, snowGrid, b, bandColor(snowBands)), b, cardMapLinesLayer());
     //dayparts alternate day/night, two per day
     var night = end % 2 == 1;
     $(".snowfall-forecast .legend .timestamp").text("Through " + sample.dayOfWeek[Math.floor(end / 2)] + (night ? " Night" : " Evening"));
@@ -559,9 +666,17 @@ async function loadWaterTemps() {
       values[latIndex.get(row[1]) * grid.cols + lonIndex.get(row[2])] = row[3] * 9 / 5 + 32;
     });
     var area = { north: lats[0], south: lats[lats.length - 1], west: lons[0], east: lons[lons.length - 1] };
-    //under the style's land fill, so the coastline stays sharp
-    setCardMapImage('waterTemps', gridImage(values, grid, area, bandColor(waterTempBands)), area, 'landcover-outdoors copy 1');
     weatherData.waterTempsMapUnavailable = false;
+    if (legacyMaps) {
+      //under the style's land fill, so the coastline stays sharp
+      setCardMapImage('waterTemps', gridImage(values, grid, area, bandColor(waterTempBands)), area, 'landcover-outdoors copy 1');
+    } else {
+      //the IntelliStar artwork has no land layer to go under, and the thinned-out grid runs past the coast,
+      //so the image keeps only what the artwork itself paints as water
+      var canvas = gridCanvas(values, grid, area, bandColor(waterTempBands));
+      await clipToArtworkWater(canvas, area);
+      setCardMapImage('waterTemps', canvas.toDataURL(), area, cardMapLinesLayer());
+    }
   } catch (error) {
     console.error("water temps map", error);
     weatherData.waterTempsMapUnavailable = true;

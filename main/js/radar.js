@@ -20,7 +20,7 @@ var dopplerShowing = 0, satShowing = 0;
 mapboxgl.accessToken = "";
 //map style from the original web simulator. the basemaps draw it without city labels,
 //and the overlays above the radar echoes draw only its boundaries, highways and city labels.
-//set to false to go back to the v2 basemap and amenity lines
+//false goes back to the v2 basemap and amenity lines; set from appearanceSettings.mapLook in initializeRadars
 var legacyMaps = true;
 //a copy of the original account's style lives in maps/legacy so it doesn't depend on that account.
 //loadLegacyStyle() swaps this URL for the loaded style before any map is made
@@ -175,16 +175,17 @@ function countryLabelsShown() {
   return systemSettings.appearanceSettings.countryLabels == true;
 }
 async function loadLegacyStyle() {
-  if (!legacyMaps || typeof legacyStyle != "string") { return }
-  var style = await (await fetch(legacyStyle)).json();
-  style.sprite = new URL(style.sprite, window.location.href).href;
-  //country names ("United States") only when appearanceSettings.countryLabels is on
-  style.layers.filter(function (layer) { return layer.id == 'country-label' }).forEach(function (layer) {
-    layer.layout = Object.assign({}, layer.layout, { visibility: countryLabelsShown() ? 'visible' : 'none' });
-  });
-  addMainCityLabel(style);
-  legacyStyle = style;
-  //the label maps draw their text from these page fonts, so they have to be loaded first
+  if (legacyMaps && typeof legacyStyle == "string") {
+    var style = await (await fetch(legacyStyle)).json();
+    style.sprite = new URL(style.sprite, window.location.href).href;
+    //country names ("United States") only when appearanceSettings.countryLabels is on
+    style.layers.filter(function (layer) { return layer.id == 'country-label' }).forEach(function (layer) {
+      layer.layout = Object.assign({}, layer.layout, { visibility: countryLabelsShown() ? 'visible' : 'none' });
+    });
+    addMainCityLabel(style);
+    legacyStyle = style;
+  }
+  //the label maps (and the card maps with either look) draw their text from these page fonts, so they have to be loaded first
   await Promise.all(Object.values(legacyLabelFonts).map(function (family) {
     return Promise.all([document.fonts.load("normal 40px " + family), document.fonts.load("bold 40px " + family)]).catch(function () {});
   }));
@@ -197,6 +198,10 @@ function legacyLabelOptions(font) {
   return legacyMaps ? { localFontFamily: legacyLabelFonts[font] } : {};
 }
 async function initializeRadars() {
+  //appearanceSettings.mapLook "intellistar" goes back to v2's IntelliStar basemap (mapStyle) everywhere.
+  //#maplook=intellistar (or legacy) in the URL tries a look for that page load
+  var look = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("maplook") || systemSettings.appearanceSettings.mapLook;
+  legacyMaps = look != "intellistar";
   await loadLegacyStyle();
   mapboxgl.accessToken = map_key;
   miniradar = new mapboxgl.Map({

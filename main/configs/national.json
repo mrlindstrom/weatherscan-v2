@@ -24,7 +24,8 @@
               "ccTicker": false
             },
             "weatherReadyLogo": 3,
-            "countryLabels": false
+            "countryLabels": false,
+            "mapLook": "legacy"
         },
         "audioSettings":{
             "enableMusic":true,
