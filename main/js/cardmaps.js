@@ -114,7 +114,8 @@ function initializeCardMaps() {
 //appearanceSettings.mapLook "intellistar": v2's IntelliStar style. its land and water are one raster picture
 //(the "conus merc" artwork, or "conus sat" drawn for lambert on the national map) under IntelliStar 2 lines,
 //set up the way v2's own data maps had it (datamaps.js): state, coast and country lines, no counties or roads.
-//its alaska and hawaii artwork no longer loads, so those stay off
+//its own alaska and hawaii artwork no longer loads, so those stay off (an appearanceSettings.intellistarTiles
+//folder can have them in the conus merc artwork)
 var intellistarCardLayers = {
   'background': 'visible', 'conus merc': 'visible', 'conus sat': 'none',
   'hawaii local': 'none', 'hawaii regional': 'none', 'alaska': 'none',
@@ -622,7 +623,6 @@ function gridCanvas(values, grid, b, colorFor) {
 //keeps only the parts of a gridCanvas (drawn in web mercator over b) where the IntelliStar artwork is ocean blue,
 //so data stops at the coast the viewer sees. the artwork's own tiles for the area are drawn into a mask at the
 //canvas's size and its water picked out by color (its lakes, marshes and small rivers are painted as land)
-var intellistarArtwork = "https://api.mapbox.com/v4/freakydreakylol.i1basemaphq/";
 async function clipToArtworkWater(canvas, b) {
   var z = 5, n = Math.pow(2, z);
   var tileX = function (lon) { return (lon + 180) / 360 * n };
@@ -647,7 +647,7 @@ async function clipToArtworkWater(canvas, b) {
       };
       //outside the artwork there's no tile, and no water drawn there either
       img.onerror = resolve;
-      img.src = intellistarArtwork + z + '/' + tile[0] + '/' + tile[1] + '.png?access_token=' + map_key;
+      img.src = intellistarTileURL(z, tile[0], tile[1]);
     });
   }));
   //the artwork's ocean is about rgb(0, 28, 110); its land is green and brown. past the artwork's edge (out in the

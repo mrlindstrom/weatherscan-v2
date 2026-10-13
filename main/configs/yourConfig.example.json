@@ -23,7 +23,8 @@
             },
             "weatherReadyLogo": 3,
             "countryLabels": false,
-            "mapLook": "legacy"
+            "mapLook": "legacy",
+            "intellistarTiles": ""
         },
         "audioSettings":{
             "enableMusic":true,

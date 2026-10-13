@@ -31,7 +31,8 @@ var systemSettings = {
     condensedCrawlFont: false,
     weatherReadyLogo: 1,
     countryLabels: false, //country names like "United States" on the maps
-    mapLook: "legacy" //"legacy" (the original web simulator's map) or "intellistar" (v2's IntelliStar basemap)
+    mapLook: "legacy", //"legacy" (the original web simulator's map) or "intellistar" (v2's IntelliStar basemap)
+    intellistarTiles: "" //a folder of the IntelliStar artwork as z/x/y.png tiles; blank uses the online tileset
   },
   audioSettings: {
     enableMusic: true,

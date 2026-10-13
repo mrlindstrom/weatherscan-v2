@@ -1,4 +1,31 @@
 var mapStyle = "mapbox://styles/colster/cmiccqynn00as01s4bt6501il";
+//the IntelliStar artwork ("conus merc" in mapStyle) is this online tileset. appearanceSettings.intellistarTiles can
+//name a folder of it instead (z/x/y.png tiles), which app.js serves at intellistar-tiles/ with a tiles.json that
+//every map's request for the tileset is pointed to
+var intellistarTileset = "freakydreakylol.i1basemaphq";
+function localIntellistarTiles() {
+  return Boolean(systemSettings.appearanceSettings.intellistarTiles);
+}
+function intellistarTileURL(z, x, y) {
+  return localIntellistarTiles() ? "intellistar-tiles/" + z + "/" + x + "/" + y + ".png"
+    : "https://api.mapbox.com/v4/" + intellistarTileset + "/" + z + "/" + x + "/" + y + ".png?access_token=" + map_key;
+}
+function intellistarRequests(url, resourceType) {
+  if (!localIntellistarTiles()) { return }
+  if (resourceType == "Source" && url.includes("/" + intellistarTileset + ".json")) {
+    return { url: new URL("intellistar-tiles/tiles.json", window.location.href).href };
+  }
+  //tiles.json names the server as app.js sees it; behind a proxy (https in front of http, or a path prefix)
+  //that isn't the address the page came from, so the tiles are fetched relative to the page instead
+  var local = url.indexOf("/intellistar-tiles/");
+  if (resourceType == "Tile" && local >= 0) {
+    return { url: new URL(url.slice(local + 1), window.location.href).href };
+  }
+}
+var MapboxMap = mapboxgl.Map;
+mapboxgl.Map = class extends MapboxMap {
+  constructor(options) { super(Object.assign({ transformRequest: intellistarRequests }, options)) }
+};
 //the echo maps only draw radar layers, so they start from an empty style. mapStyle's own layers were all
 //hidden there, and three of its tilesets no longer load (the "Ve" 404 errors in the console).
 //it's a file rather than an inline object: mapbox finishes an inline style on the next animation frame,
