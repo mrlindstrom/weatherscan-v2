@@ -677,10 +677,122 @@ async function loadWaterTemps() {
       await clipToArtworkWater(canvas, area);
       setCardMapImage('waterTemps', canvas.toDataURL(), area, cardMapLinesLayer());
     }
+    setWaterTempLabels(waterTempLabelPoints(values, grid, lats, lons));
   } catch (error) {
     console.error("water temps map", error);
     weatherData.waterTempsMapUnavailable = true;
   }
+}
+
+//temperatures printed over the water like the real card: a row of them along whatever coast is in view, reading
+//the water right at the shore, and a few farther out to sea. spacing is in map pixels, inside the part of the map
+//the card shows: from the main city, this far left/right/up/down (the header covers the rest)
+var waterTempLabelView = { left: -625, right: 729, top: -305, bottom: 330 };
+//how far off the coast the coastal row sits, in grid steps (about 0.2 degrees each): just clear of the land
+var waterTempCoastBand = [2, 4];
+//a coastal label reads the water within this many steps of the shore, this many steps around it
+var waterTempShore = 2;
+var waterTempShoreReach = 4;
+//open water: at least this many grid steps from land
+var waterTempOffshore = 12;
+var waterTempSpacing = { coast: 190, offshore: 230 };
+//numbers are about this big, so they're kept this far inside the view's edges
+var waterTempLabelMargin = { x: 40, y: 28 };
+function waterTempLabelPoints(values, grid, lats, lons) {
+  var at = function (r, c) { return values[r * grid.cols + c] };
+  //grid steps from each water point to the nearest land (no value), 8 directions
+  var steps = new Array(values.length).fill(Infinity);
+  var queue = [];
+  values.forEach(function (value, i) { if (value == null) { steps[i] = 0; queue.push(i) } });
+  for (var q = 0; q < queue.length; q++) {
+    var r0 = Math.floor(queue[q] / grid.cols), c0 = queue[q] % grid.cols;
+    for (var dr = -1; dr <= 1; dr++) {
+      for (var dc = -1; dc <= 1; dc++) {
+        var r = r0 + dr, c = c0 + dc;
+        if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) { continue }
+        var i = r * grid.cols + c;
+        if (steps[i] > steps[queue[q]] + 1) { steps[i] = steps[queue[q]] + 1; queue.push(i) }
+      }
+    }
+  }
+  //map pixels from the main city at the card zoom
+  var scale = 512 * Math.pow(2, cardMapZoom);
+  var center = mapboxgl.MercatorCoordinate.fromLngLat([systemSettings.mainCity.lon, systemSettings.mainCity.lat]);
+  var candidates = [];
+  for (var r = 0; r < grid.rows; r++) {
+    for (var c = 0; c < grid.cols; c++) {
+      var i = r * grid.cols + c;
+      if (at(r, c) == null) { continue }
+      var m = mapboxgl.MercatorCoordinate.fromLngLat([lons[c], lats[r]]);
+      var x = (m.x - center.x) * scale, y = (m.y - center.y) * scale;
+      if (x < waterTempLabelView.left + waterTempLabelMargin.x || x > waterTempLabelView.right - waterTempLabelMargin.x ||
+        y < waterTempLabelView.top + waterTempLabelMargin.y || y > waterTempLabelView.bottom - waterTempLabelMargin.y) { continue }
+      candidates.push({ x: x, y: y, r: r, c: c, lon: lons[c], lat: lats[r], steps: steps[i], value: at(r, c) });
+    }
+  }
+  //the shore water next to a coastal label, where people swim, rather than the water under the number
+  var shoreValue = function (point) {
+    var total = 0, count = 0;
+    for (var r = Math.max(0, point.r - waterTempShoreReach); r <= Math.min(grid.rows - 1, point.r + waterTempShoreReach); r++) {
+      for (var c = Math.max(0, point.c - waterTempShoreReach); c <= Math.min(grid.cols - 1, point.c + waterTempShoreReach); c++) {
+        var i = r * grid.cols + c;
+        if (steps[i] >= 1 && steps[i] <= waterTempShore) { total += values[i]; count++ }
+      }
+    }
+    return count > 0 ? total / count : point.value;
+  };
+  var points = [];
+  var place = function (list, spacing) {
+    list.forEach(function (point) {
+      if (points.every(function (other) { return Math.hypot(other.x - point.x, other.y - point.y) >= spacing })) { points.push(point) }
+    });
+  };
+  //the coastal row first: the shore nearest the main city (where the viewer is), then the rest with the middle of
+  //the band ahead of its edges, so labels sit evenly off the coast
+  var middle = (waterTempCoastBand[0] + waterTempCoastBand[1]) / 2;
+  var coast = candidates.filter(function (point) { return point.steps >= waterTempCoastBand[0] && point.steps <= waterTempCoastBand[1] })
+    .sort(function (a, b) { return Math.abs(a.steps - middle) - Math.abs(b.steps - middle) });
+  //clear of the main city's own name, which sits above its dot and would knock the number out
+  var nameHalfWidth = String(systemSettings.mainCity.locationName || "").length * radarCityLook.radar.sizes[0] * 0.3 + 30;
+  var clearOfName = function (point) { return Math.abs(point.x) > nameHalfWidth || point.y < -95 || point.y > 30 };
+  var nearest = coast.filter(clearOfName).reduce(function (best, point) { return !best || Math.hypot(point.x, point.y) < Math.hypot(best.x, best.y) ? point : best }, null);
+  place(nearest ? [nearest].concat(coast) : coast, waterTempSpacing.coast);
+  points.forEach(function (point) { point.value = shoreValue(point) });
+  //then open water, farthest from land first
+  place(candidates.filter(function (point) { return point.steps >= waterTempOffshore })
+    .sort(function (a, b) { return b.steps - a.steps }), waterTempSpacing.offshore);
+  return points;
+}
+function setWaterTempLabels(points) {
+  var id = mapCards.waterTemps.layer + '-labels';
+  var data = {
+    type: 'FeatureCollection',
+    features: points.map(function (point) {
+      return { type: 'Feature', properties: { temp: String(Math.round(point.value)) }, geometry: { type: 'Point', coordinates: [point.lon, point.lat] } };
+    })
+  };
+  if (cardMap.getSource(id)) {
+    cardMap.getSource(id).setData(data);
+    return;
+  }
+  cardMap.addSource(id, { type: 'geojson', data: data });
+  //under the city names, so a city on the coast keeps its label and a number in its way is the one left out
+  var cityLayers = legacyMaps ? legacyCityLayers : [intellistarCityLayer];
+  var below = cardMap.getStyle().layers.find(function (layer) { return cityLayers.includes(layer.id) });
+  var look = radarCityLook.radar;
+  cardMap.addLayer({
+    id: id, type: 'symbol', source: id,
+    layout: {
+      visibility: cardLayerVisibility('waterTemps'),
+      'text-field': ['get', 'temp'],
+      'text-font': cardMap.getLayoutProperty(below.id, 'text-font'),
+      'text-size': look.sizes[1],
+      //a city name in the way moves the number aside rather than dropping it
+      'text-variable-anchor': ['center', 'left', 'right', 'top', 'bottom'],
+      'text-radial-offset': 0.8
+    },
+    paint: { 'text-color': 'rgb(235, 230, 205)', 'text-halo-color': 'rgba(20, 20, 20, 1)', 'text-halo-width': look.outline }
+  }, below.id);
 }
 
 //one slanted green rain streak, the travel map's scattered showers/storms marking
