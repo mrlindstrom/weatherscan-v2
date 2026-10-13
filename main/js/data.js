@@ -1677,21 +1677,24 @@ async function getAirporData() {
       if (airportObj.departureDelay == "") {
         airportObj.departureDelay = "No Delay"
       }
-      weatherData.localAirportConditions.push(airportObj)
+      localAirports.push(airportObj)
     } catch (error) {
       console.error(error)
 
       var airportObj = {noReport:true,iataCode:systemSettings.airport.main[num].iataCode,airportName:systemSettings.airport.main[num].airportName,arrivalDelay:"No Report",arrivalDelayReason:"",departureDelay:"No Report",departureDelayReason:"",icon:"",condition:"",temperature:""}
-      weatherData.localAirportConditions.push(airportObj)
+      localAirports.push(airportObj)
     }
   }
-  weatherData.localAirportConditions = []
+  //the lists are built up separately and swapped in once complete, since the airport cards can be showing
+  //while this refreshes and would otherwise find them empty or half filled
+  var localAirports = []
 
   if (systemSettings.airport.mainEnabled) {
     for (let i = 0; i < systemSettings.airport.main.length; i++) {
       await getLocalAirports(i)
     }
   }
+  weatherData.localAirportConditions = localAirports
   
   async function getNatAirports(num) {
     var url = "https://api.weather.com/v3/wx/observations/current?iataCode=" + systemSettings.airport.national[num].iataCode + "&units=e&language=en-US&format=json&apiKey=" + api_key
@@ -1715,20 +1718,21 @@ async function getAirporData() {
         airportObj.delay = "No Delay"
       }
 
-      weatherData.nationalAirportConditions[num] = airportObj
+      nationalAirports[num] = airportObj
     } catch (error) {
       console.error(error)
       
       var airportObj = {noReport:true,iataCode:systemSettings.airport.national[num].iataCode,airportName:systemSettings.airport.national[num].airportName,delay:"",delayReason:"",icon:"",temperature:""}
 
-      weatherData.nationalAirportConditions[num] = airportObj
+      nationalAirports[num] = airportObj
     }
   }
 
-  weatherData.nationalAirportConditions = []
+  var nationalAirports = []
   for (let i = 0; i < systemSettings.airport.national.length; i++) {
     await getNatAirports(i)
   }
+  weatherData.nationalAirportConditions = nationalAirports
 }
 async function getIntlData() {
   async function getIntlMapDataCA(citynum) {

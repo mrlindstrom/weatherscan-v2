@@ -1621,10 +1621,12 @@ var slidePrograms = {
       if(arptCap > 4) arptCap = 4;
       fadeSlideIn($(".national-airports"), 500)
       for (var i = 0; i < 4; i++) {
-        $(".national-airports .airport" + divs[i]).text(weatherData.nationalAirportConditions[bump + i].airportName)
-        $(".national-airports .temperature" + divs[i]).text(weatherData.nationalAirportConditions[bump + i].temperature)
-        getIcon($(".national-airports .icon" + divs[i]), weatherData.nationalAirportConditions[bump + i].icon, "current", "small")
-        $(".national-airports .delay" + divs[i]).html(weatherData.nationalAirportConditions[bump + i].delay)
+        //a page past the end of a short list leaves its rows blank rather than stopping the slideshow
+        var airport = weatherData.nationalAirportConditions[bump + i] || {airportName:"", temperature:"", icon:"", delay:""}
+        $(".national-airports .airport" + divs[i]).text(airport.airportName)
+        $(".national-airports .temperature" + divs[i]).text(airport.temperature)
+        getIcon($(".national-airports .icon" + divs[i]), airport.icon, "current", "small")
+        $(".national-airports .delay" + divs[i]).html(airport.delay)
       }
       setTimeout(() => {
         if (round < arptCap - 1) {
