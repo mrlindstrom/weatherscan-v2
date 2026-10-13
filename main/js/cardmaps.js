@@ -8,6 +8,8 @@ var cardMapZoom = 5;
 var cardMapRefresh = 30 * 60 * 1000;
 //how far the data is pulled around the main city, in degrees
 var cardMapSpan = { lon: 16, lat: 10 };
+//the part of the map a regional card shows, in map pixels from the main city (the header covers the rest)
+var cardMapView = { left: -625, right: 729, top: -305, bottom: 330 };
 
 //national: true shows the whole country with no city labels, otherwise the map centers on the main city
 var mapCards = {
@@ -204,6 +206,12 @@ function showCardMap(card) {
     cardMap.setLayoutProperty('conus merc', 'visibility', national ? 'none' : 'visible');
     cardMap.setLayoutProperty('conus sat', 'visibility', national ? 'visible' : 'none');
   }
+  //the golf card has its own city labels, with the index over each name
+  if (card == 'golfIndex') {
+    (legacyMaps ? legacyCityLayers : [intellistarCityLayer]).forEach(function (layer) {
+      cardMap.setLayoutProperty(layer, 'visibility', 'none');
+    });
+  }
   //maps measure themselves wrong while #slides is scaled
   setTimeout(() => {
     var scale = $("#slides").css("scale");
@@ -211,6 +219,7 @@ function showCardMap(card) {
     cardMap.resize();
     $("#slides").css("scale", scale);
     if (card == 'travelWeather') { placeScatteredStreaks() }
+    if (card == 'golfIndex') { cardMap.once('idle', placeGolfCities) }
   }, 50);
 }
 
@@ -439,7 +448,8 @@ async function loadGolfIndex() {
       var i = forecast.golfIndex.findIndex(function (value, j) { return value != null && dayOf(forecast, j) == day });
       return i == -1 ? null : forecast.golfIndex[i];
     });
-    var url = gridImage(values, golfGrid, b, golfIndexColor);
+    golfField = { values: values, b: b };
+    var url = blurredCanvas(gridCanvas(values, golfGrid, b, golfIndexColor), golfBlur).toDataURL();
     var coordinates = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
     var id = mapCards.golfIndex.layer;
     if (cardMap.getSource(id)) {
@@ -461,12 +471,109 @@ async function loadGolfIndex() {
     }
     //noon that day, so the time zone can't push it to the day before
     $(".golf-index .legend .day").text(dateFns.format(new Date(day + "T12:00:00"), "EEEE"));
-    if (activeMapCard == 'golfIndex') { $(".tempunavailable").fadeOut(500) }
+    if (activeMapCard == 'golfIndex') {
+      $(".tempunavailable").fadeOut(500);
+      cardMap.once('idle', placeGolfCities);
+    }
     weatherData.golfIndexUnavailable = false;
   } catch (error) {
     console.error("golf index map", error);
     weatherData.golfIndexUnavailable = true;
   }
+}
+
+//the golf grid is coarse (a few degrees between points), so its blend is softened into broad patches like the real card's
+var golfBlur = 18;
+function blurredCanvas(canvas, radius) {
+  var out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  var ctx = out.getContext('2d');
+  ctx.filter = 'blur(' + radius + 'px)';
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
+
+//the golf index over each city name, like the real card. the card gets its own city labels: the style's city
+//label layer copied with the number as a big first line over a smaller name, so the map's collisions keep each
+//number with its name and clear of the others. the cities are the ones the style would label, near the main
+//city first, and only those whose dot is on the part of the map the card shows
+var golfField = null;
+var golfCitiesLayer = 'cardmap-golf-index-cities';
+//sized from the real card, where the numbers stand a little taller than the card title's capitals and the city
+//names are about three quarters of their usual size
+var golfNumberSize = 60;
+var golfCityScale = 0.76;
+//how far inside the card's edges a city's dot has to be, with room above it for its name and number
+var golfCityMargin = { x: 60, top: 160, bottom: 20 };
+function golfIndexAt(lon, lat) {
+  var b = golfField.b, values = golfField.values;
+  var gy = (b.north - lat) / (b.north - b.south) * (golfGrid.rows - 1);
+  var gx = (lon - b.west) / (b.east - b.west) * (golfGrid.cols - 1);
+  var r0 = Math.max(0, Math.min(Math.floor(gy), golfGrid.rows - 2)), fy = gy - r0;
+  var c0 = Math.max(0, Math.min(Math.floor(gx), golfGrid.cols - 2)), fx = gx - c0;
+  var sum = 0, weight = 0;
+  [[r0, c0, (1 - fx) * (1 - fy)], [r0, c0 + 1, fx * (1 - fy)], [r0 + 1, c0, (1 - fx) * fy], [r0 + 1, c0 + 1, fx * fy]].forEach(function (corner) {
+    var v = values[corner[0] * golfGrid.cols + corner[1]];
+    if (v != null) { sum += v * corner[2]; weight += corner[2] }
+  });
+  return weight == 0 ? null : sum / weight;
+}
+//the style's city label layers that pick cities (not the legacy shadow copies)
+function golfSourceCityLayers() {
+  var ids = legacyMaps ? legacyCityLayers.filter(function (id) { return !id.endsWith(' copy') }) : [intellistarCityLayer];
+  return cardMap.getStyle().layers.filter(function (layer) { return ids.includes(layer.id) });
+}
+function placeGolfCities() {
+  if (!golfField || activeMapCard != 'golfIndex') { return }
+  var center = cardMap.project([systemSettings.mainCity.lon, systemSettings.mainCity.lat]);
+  var seen = new Set();
+  var features = [];
+  golfSourceCityLayers().forEach(function (layer) {
+    var cities = [];
+    try {
+      cities = cardMap.querySourceFeatures(layer.source, { sourceLayer: layer['source-layer'], filter: layer.filter });
+    } catch (error) {
+      console.warn("golf index cities", layer.id, error);
+    }
+    cities.forEach(function (city) {
+      if (city.geometry.type != 'Point') { return }
+      var lon = city.geometry.coordinates[0], lat = city.geometry.coordinates[1];
+      //a city shows up once per tile it's in
+      var key = city.properties.name + ',' + lon.toFixed(2) + ',' + lat.toFixed(2);
+      if (seen.has(key)) { return }
+      seen.add(key);
+      var p = cardMap.project([lon, lat]);
+      if (p.x < center.x + cardMapView.left + golfCityMargin.x || p.x > center.x + cardMapView.right - golfCityMargin.x ||
+        p.y < center.y + cardMapView.top + golfCityMargin.top || p.y > center.y + cardMapView.bottom - golfCityMargin.bottom) { return }
+      var index = golfIndexAt(lon, lat);
+      if (index == null) { return }
+      var properties = Object.assign({}, city.properties, { index: String(Math.round(index)), main: layer.id == 'main-city-label' });
+      features.push({ type: 'Feature', properties: properties, geometry: { type: 'Point', coordinates: [lon, lat] } });
+    });
+  });
+  var data = { type: 'FeatureCollection', features: features };
+  if (cardMap.getSource(golfCitiesLayer)) {
+    cardMap.getSource(golfCitiesLayer).setData(data);
+    return;
+  }
+  cardMap.addSource(golfCitiesLayer, { type: 'geojson', data: data });
+  //a copy of the style's city label layer, so the names look the same as on every other map
+  var template = JSON.parse(JSON.stringify(cardMap.getStyle().layers.find(function (layer) { return layer.id == (legacyMaps ? 'settlement-minor-label' : intellistarCityLayer) })));
+  var nameSize = ['*', golfCityScale, template.layout['text-size']];
+  var layer = {
+    id: golfCitiesLayer, type: 'symbol', source: golfCitiesLayer,
+    layout: Object.assign(template.layout, {
+      visibility: cardLayerVisibility('golfIndex'),
+      'text-size': nameSize,
+      'text-field': ['format', ['get', 'index'], { 'font-scale': ['/', golfNumberSize, nameSize] }, '\n', {}, template.layout['text-field'], {}],
+      //the main city first, then the bigger places
+      'symbol-sort-key': ['case', ['get', 'main'], -1, ['get', 'symbolrank']]
+    }),
+    paint: template.paint
+  };
+  //on top, so the style's other (invisible) labels can't push these out
+  cardMap.addLayer(layer);
 }
 
 //smooth image from a regular lat/lon grid of values (rows north to south), drawn in web mercator to
@@ -685,9 +792,7 @@ async function loadWaterTemps() {
 }
 
 //temperatures printed over the water like the real card: a row of them along whatever coast is in view, reading
-//the water right at the shore, and a few farther out to sea. spacing is in map pixels, inside the part of the map
-//the card shows: from the main city, this far left/right/up/down (the header covers the rest)
-var waterTempLabelView = { left: -625, right: 729, top: -305, bottom: 330 };
+//the water right at the shore, and a few farther out to sea. spacing is in map pixels, inside cardMapView
 //how far off the coast the coastal row sits, in grid steps (about 0.2 degrees each): just clear of the land
 var waterTempCoastBand = [2, 4];
 //a coastal label reads the water within this many steps of the shore, this many steps around it
@@ -725,8 +830,8 @@ function waterTempLabelPoints(values, grid, lats, lons) {
       if (at(r, c) == null) { continue }
       var m = mapboxgl.MercatorCoordinate.fromLngLat([lons[c], lats[r]]);
       var x = (m.x - center.x) * scale, y = (m.y - center.y) * scale;
-      if (x < waterTempLabelView.left + waterTempLabelMargin.x || x > waterTempLabelView.right - waterTempLabelMargin.x ||
-        y < waterTempLabelView.top + waterTempLabelMargin.y || y > waterTempLabelView.bottom - waterTempLabelMargin.y) { continue }
+      if (x < cardMapView.left + waterTempLabelMargin.x || x > cardMapView.right - waterTempLabelMargin.x ||
+        y < cardMapView.top + waterTempLabelMargin.y || y > cardMapView.bottom - waterTempLabelMargin.y) { continue }
       candidates.push({ x: x, y: y, r: r, c: c, lon: lons[c], lat: lats[r], steps: steps[i], value: at(r, c) });
     }
   }
