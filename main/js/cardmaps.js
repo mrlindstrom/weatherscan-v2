@@ -650,11 +650,12 @@ async function clipToArtworkWater(canvas, b) {
       img.src = intellistarArtwork + z + '/' + tile[0] + '/' + tile[1] + '.png?access_token=' + map_key;
     });
   }));
-  //the artwork's ocean is about rgb(0, 28, 110); its land is green and brown
+  //the artwork's ocean is about rgb(0, 28, 110); its land is green and brown. past the artwork's edge (out in the
+  //Atlantic, say) there's nothing drawn, so the data is kept there and its own gaps over land do the clipping
   var pixels = mctx.getImageData(0, 0, mask.width, mask.height);
   for (var i = 0; i < pixels.data.length; i += 4) {
     var r = pixels.data[i], g = pixels.data[i + 1], bl = pixels.data[i + 2];
-    pixels.data[i + 3] = bl > 80 && bl > r + 50 && bl > g + 40 ? 255 : 0;
+    pixels.data[i + 3] = pixels.data[i + 3] < 128 || (bl > 80 && bl > r + 50 && bl > g + 40) ? 255 : 0;
   }
   mctx.putImageData(pixels, 0, 0);
   var ctx = canvas.getContext('2d');
