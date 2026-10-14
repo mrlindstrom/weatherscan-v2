@@ -12,7 +12,13 @@ try {
 }
 const port = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, 'main')));
+//the page's code and styles are checked with the server on every load (an unchanged file is a quick 304), so a
+//browser doesn't keep running an old copy after an update. phones especially hold on to cached scripts
+app.use(express.static(path.join(__dirname, 'main'), {
+    setHeaders: (res, file) => {
+        if (/\.(html|js|css|json)$/.test(file)) { res.setHeader('Cache-Control', 'no-cache') }
+    }
+}));
 
 //appearanceSettings.intellistarTiles: a folder of the IntelliStar artwork as z/x/y.png tiles, served at
 ///intellistar-tiles. the maps get its tiles.json in place of the online tileset's. read when the server starts

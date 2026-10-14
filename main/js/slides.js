@@ -805,6 +805,7 @@ var slidePrograms = {
       }
       $('.headertext').text("")
       //weatherData.dopplerUnavailable = false
+      if (phoneMaps) { createLocalRadarMaps() }
 
       try {
         locradar.setProjection('mercator');
@@ -822,7 +823,8 @@ var slidePrograms = {
         locradarAmenitiesTrans.setZoom(dataTunnel.zoom)
         radarEchoes.setZoom(dataTunnel.zoom)
 
-        if (!legacyMaps) {
+        //a phone's new map isn't loaded yet, and its load sets these anyway
+        if (!legacyMaps && !phoneMaps) {
           locradarAmenities.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'visible');//county lines
           locradarAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'visible');//black roads
           locradarAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'visible');//gray roads
@@ -857,8 +859,8 @@ var slidePrograms = {
       }, 2000);*/
       
       setTimeout(() => {
-        
-        if (!radarTransform) {
+        //a phone's maps are new each showing, so they're measured each time
+        if (!radarTransform || phoneMaps) {
           $("#slides").css("scale","none")
           locradar.resize()
           locradarAmenities.resize()
@@ -899,11 +901,16 @@ var slidePrograms = {
           clearInterval(locRadarAnimation)
           $("#radar-basemap").fadeOut(0)
           $("#slides-background").fadeIn(0)
-          setTimeout(() => { if (showing == dopplerShowing) { stopLocalRadar() } }, 500)
+          setTimeout(() => {
+            if (showing != dopplerShowing) { return }
+            stopLocalRadar()
+            if (phoneMaps) { removeLocalRadarMaps() }
+          }, 500)
         }, 566);
       }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-566);
       try {
-        startLocalRadar();
+        //a phone's echo map takes radar layers once its style loads
+        if (phoneMaps) { localRadarReady.then(startLocalRadar) } else { startLocalRadar() }
         $("#radar-echoes").fadeIn(566)
         setTimeout(() => {
           $("#radar-echoes").fadeOut(566)
@@ -948,13 +955,14 @@ var slidePrograms = {
       if (dataTunnel.satCoords[0] == "auto") {
         dataTunnel.satCoords = [dataTunnel.lon, dataTunnel.lat]
       }
+      if (phoneMaps) { createSatMaps() }
       satmap.jumpTo({center: dataTunnel.satCoords});
       satEchoes.jumpTo({center: dataTunnel.satCoords});
       satAmenities.jumpTo({center: dataTunnel.satCoords});
 
       
       setTimeout(() => {
-        if (!satTransform) {
+        if (!satTransform || phoneMaps) {
           $("#slides").css("scale","none")
           satEchoes.resize()
           satmap.resize()
@@ -977,11 +985,15 @@ var slidePrograms = {
           if (showing != satShowing) { return }
           $("#slides-background").fadeIn(0)
           clearInterval(satRadarAnimation)
-          setTimeout(() => { if (showing == satShowing) { stopSatRadar() } }, 500)
+          setTimeout(() => {
+            if (showing != satShowing) { return }
+            stopSatRadar()
+            if (phoneMaps) { removeSatMaps() }
+          }, 500)
         }, 566);
       }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration-566);
       try {
-        startSatRadar();
+        if (phoneMaps) { satReady.then(startSatRadar) } else { startSatRadar() }
         $("#sat-echoes").fadeIn(566)
         setTimeout(() => {
           $("#sat-echoes").fadeOut(566)
@@ -1209,6 +1221,12 @@ var slidePrograms = {
       $('.headertext').text(systemSettings.traffic.locationName)
       var trafZoom = ((round < 1) ? systemSettings.traffic.zoomOut : systemSettings.traffic.zoomIn)
       var cap = slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration.length-1
+      var newTrafficMap = phoneMaps && !trafficMap
+      if (phoneMaps) {
+        if (round == 0) { trafficShowing++ }
+        createTrafficMap()
+      }
+      var showing = trafficShowing
       if (weatherData.trafficMapUnavailable == false) {
         createTrafficMapIcons(round)
         if (round == 0) {
@@ -1218,14 +1236,15 @@ var slidePrograms = {
           fadeSlideIn($(".traffic-overview"), 250)
         }
         setTimeout(() =>{
-          if (!trafTransform) {
+          if (!trafTransform || newTrafficMap) {
           $("#slides").css("scale","none")
           trafficMap.resize()
           trafTransform = true
           $("#slides").css("scale","0.72")
         }
           trafficMap.setZoom(trafZoom)
-          createTrafficBadges()
+          //the badges go on the roads the map has loaded, which a phone's new map hasn't yet
+          if (newTrafficMap) { trafficMap.once('idle', createTrafficBadges) } else { createTrafficBadges() }
         }, 1)
 
          setTimeout(() => {
@@ -1240,6 +1259,8 @@ var slidePrograms = {
              }, 500);
            } else {
              fadeSlideOut($(".traffic-overview"), 500, true)
+             //unless a held card has already started its next showing
+             if (phoneMaps) { setTimeout(() => { if (showing == trafficShowing) { removeTrafficMap() } }, 500) }
            }
          }, slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration[round]-500);
       } else {
@@ -2823,6 +2844,17 @@ function showSlides() {
     //console.log(slideSettings.order[orderidx].slideLineup.length)
     idx = 0;
     gidx++;
+    //phones start over with a fresh page at the first segment change after phoneReloadAfter (main.js), carrying on
+    //with the segment that was about to start: memory builds up until an iPhone crashes the page, after 12 minutes
+    //at the soonest. not while a card is held, or in severe mode, whose lineup a fresh page wouldn't start in
+    if (phoneMaps && !cardJump.hold && orderidx == 0 && performance.now() > phoneReloadAfter) {
+      var params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      ["card", "package", "hold"].forEach(function (key) { params.delete(key) });
+      params.set("segment", gidx < slideSettings.order[orderidx].slideLineup.length ? gidx : 0);
+      window.location.hash = params.toString();
+      window.location.reload();
+      return;
+    }
     setBackground() //earth day check
     setWInterLegend()
     //re order forecast bar
@@ -2865,6 +2897,7 @@ function showSlides() {
     segmentSet()
   }
   //console.log(slideSettings.order[orderidx].slideLineup[gidx].slides[idx].duration)
+  if (phoneMaps) { phoneCardMapFor(slideSettings.order[orderidx].slideLineup[gidx].slides) }
   currentProgram = slidePrograms[slideSettings.order[orderidx].slideLineup[gidx].slides[idx].function];
   //currentDiv = slideDivs[slideSettings.order[0].slideLineup[gidx].slides[idx].function];
   currentProgram();

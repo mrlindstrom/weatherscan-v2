@@ -2716,7 +2716,8 @@ async function startPrograms() {
   alignDataMaps()
   if (["garden", "travel", "golf", "ski", "beach"].some(p => systemSettings.packageSettings.includes(p))) {
     try {
-      initializeCardMaps()
+      //a phone makes it for each segment with map cards (phoneCardMapFor in cardmaps.js)
+      if (!phoneMaps) { initializeCardMaps() }
     } catch (error) {
       console.error(error)
     }

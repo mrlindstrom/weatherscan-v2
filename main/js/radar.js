@@ -24,7 +24,8 @@ function intellistarRequests(url, resourceType) {
 }
 var MapboxMap = mapboxgl.Map;
 mapboxgl.Map = class extends MapboxMap {
-  constructor(options) { super(Object.assign({ transformRequest: intellistarRequests }, options)) }
+  //phones keep fewer tiles from views the map has moved away from (phoneMaps in main.js)
+  constructor(options) { super(Object.assign({ transformRequest: intellistarRequests }, phoneMaps ? { maxTileCacheSize: 20 } : {}, options)) }
 };
 //the echo maps only draw radar layers, so they start from an empty style. mapStyle's own layers were all
 //hidden there, and three of its tilesets no longer load (the "Ve" 404 errors in the console).
@@ -42,8 +43,8 @@ var miniRadarTimestamps, miniRadarAnimation;
 var locradarani, satradani, miniradarani;
 //the radar draws above the city names, shields and boundaries; this much opacity lets them show through light echoes
 var radarEchoOpacity = 0.85;
-//count the doppler and radar/satellite showings, so cleanup from one showing skips a newer one of the same card
-var dopplerShowing = 0, satShowing = 0;
+//count the doppler, radar/satellite and (on phones) traffic showings, so cleanup from one showing skips a newer one of the same card
+var dopplerShowing = 0, satShowing = 0, trafficShowing = 0;
 mapboxgl.accessToken = "";
 //map style from the original web simulator. the basemaps draw it without city labels,
 //and the overlays above the radar echoes draw only its boundaries, highways and city labels.
@@ -210,6 +211,12 @@ async function loadLegacyStyle() {
       layer.layout = Object.assign({}, layer.layout, { visibility: countryLabelsShown() ? 'visible' : 'none' });
     });
     addMainCityLabel(style);
+    //phones go without the relief shading drawn from elevation tiles: every map decodes its own, and an iPhone ran
+    //out of memory loading a new area's (phoneMaps in main.js). the vector "hillshade" fill stays
+    if (phoneMaps) {
+      style.layers = style.layers.filter(function (layer) { return layer.source != 'mapbox://mapbox.terrain-rgb' });
+      delete style.sources['mapbox://mapbox.terrain-rgb'];
+    }
     legacyStyle = style;
   }
   //the label maps (and the card maps with either look) draw their text from these page fonts, so they have to be loaded first
@@ -319,6 +326,23 @@ async function initializeRadars() {
     return;
   })
 
+  //phones make these when their card shows, and remove them when it ends (phoneMaps in main.js)
+  if (phoneMaps) {
+    weatherData.trafficMapUnavailable = false
+    return
+  }
+  createLocalRadarMaps();
+  createSatMaps();
+  createTrafficMap();
+}
+//resolves once the map can take sources and layers. not isStyleLoaded(), which also waits on tiles
+function styleLoaded(map) {
+  return new Promise(function (resolve) { map.style && map.style._loaded ? resolve() : map.once('style.load', resolve) });
+}
+//local doppler: the basemap, the radar echoes, and the amenities over them
+var localRadarReady;
+function createLocalRadarMaps() {
+  if (locradar) { return localRadarReady }
   mapboxgl.accessToken = map_key
   locradar = new mapboxgl.Map({
     ...legacyLabelOptions('radar'),
@@ -349,41 +373,10 @@ async function initializeRadars() {
     locradar.setLayoutProperty('country-boundaries', 'visibility', 'none');
   });
 
-  satmap = new mapboxgl.Map({
-    ...legacyLabelOptions('radar'),
-    container: 'sat-basemap', // container id
-    style: legacyMaps ? legacyStyle : mapStyle,
-    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
-    zoom: satZoom,
-    trackResize: false,
-    projection: {
-      name: 'lambertConformalConic',
-      center: [-100, 45],
-      parallels: [30, 30]
-    },
-  });
-  satmap.on('load', function () {
-    if (legacyMaps) { setupLegacyBase(satmap); return }
-    satmap.setLayoutProperty('background', 'visibility', 'visible');//ocean
-    satmap.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
-    satmap.setLayoutProperty('hawaii regional', 'visibility', 'visible');//hawaii lambert
-    satmap.setLayoutProperty('alaska', 'visibility', 'visible');//alaska
-    satmap.setLayoutProperty('conus merc', 'visibility', 'none');//conus mercator
-    satmap.setLayoutProperty('conus sat', 'visibility', 'visible');//conus lambert
-    satmap.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'none');//county lines
-    satmap.setLayoutProperty('cb-2019-us-state-20m-nocoast-7m1rrd', 'visibility', 'none');//state lines
-    satmap.setLayoutProperty('i2-coastlines-conus-ak-hi-06wtga', 'visibility', 'none');//coastlines
-    satmap.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'none');//black roads
-    satmap.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'none');//gray roads
-    satmap.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (2)', 'visibility', 'none');
-    satmap.setLayoutProperty('place-label', 'visibility', 'none');
-    satmap.setLayoutProperty('place-label copy', 'visibility', 'none');
-    satmap.setLayoutProperty('airport-label', 'visibility', 'none');
-    satmap.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (4)', 'visibility', 'none');
-    satmap.setLayoutProperty('country-boundaries', 'visibility', 'none');
-  });
-
-  radarEchoes = new mapboxgl.Map({
+  //phones draw the doppler and satellite echoes in the basemap, under the overlay, rather than in a map of their own:
+  //every map is a WebGL context that compiles its own shaders, and a phone runs out of memory at about 8 (phoneMaps
+  //in main.js). not the mini radar's: drawing its echoes in its basemap crashed an iPhone on the first frame
+  radarEchoes = phoneMaps ? locradar : new mapboxgl.Map({
     container: 'radar-echoes', // container id
     style: echoStyle,
     center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
@@ -393,59 +386,8 @@ async function initializeRadars() {
   radarEchoes.on('load', function () {
   });
 
-  satEchoes = new mapboxgl.Map({
-    container: 'sat-echoes', // container id
-    style: echoStyle,
-    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
-    zoom: satZoom,
-    trackResize: false,
-    projection: {
-      name: 'lambertConformalConic',
-      center: [-100, 45],
-      parallels: [30, 30]
-    },
-  });
-  satEchoes.on('load', function () {
-  });
-
-  satAmenities = new mapboxgl.Map({
-    ...legacyLabelOptions('radar'),
-    container: 'sat-amenities', // container id
-    style: legacyMaps ? legacyStyle : mapStyle,
-    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
-    zoom: satZoom,
-    trackResize: false,
-    projection: {
-      name: 'lambertConformalConic',
-      center: [-100, 45],
-      parallels: [30, 30]
-    },
-  });
-
-  satAmenities.on('load', function () {
-    if (legacyMaps) { setupLegacyOverlay(satAmenities); return }
-    satAmenities.setLayoutProperty('background', 'visibility', 'none');//ocean
-    satAmenities.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
-    satAmenities.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
-    satAmenities.setLayoutProperty('alaska', 'visibility', 'none');//alaska
-    satAmenities.setLayoutProperty('conus merc', 'visibility', 'none');//conus mercator
-    satAmenities.setLayoutProperty('conus sat', 'visibility', 'none');//conus lambert
-    satAmenities.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'none');//county lines
-    satAmenities.setLayoutProperty('cb-2019-us-state-20m-nocoast-7m1rrd', 'visibility', 'visible');//state lines
-    satAmenities.setPaintProperty('cb-2019-us-state-20m-nocoast-7m1rrd', "line-width", 4)
-    satAmenities.setLayoutProperty('i2-coastlines-conus-ak-hi-06wtga', 'visibility', 'visible');//coastlines
-    satAmenities.setPaintProperty('i2-coastlines-conus-ak-hi-06wtga', "line-width", 4)
-    satAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'none');//black roads
-    satAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'none');//gray roads
-    satAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (2)', 'visibility', 'none');
-    satAmenities.setLayoutProperty('place-label', 'visibility', 'none');
-    satAmenities.setLayoutProperty('place-label copy', 'visibility', 'none');
-    satAmenities.setLayoutProperty('airport-label', 'visibility', 'none');
-    satAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (4)', 'visibility', 'none');
-    satAmenities.setLayoutProperty('country-boundaries', 'visibility', 'visible');
-    satAmenities.setPaintProperty('country-boundaries', "line-width", 4)
-  });
-  locradarAmenities = new mapboxgl.Map({
+  //with the legacy look this map is empty (the basemap has the roads and county lines), so phones go without it
+  locradarAmenities = phoneMaps && legacyMaps ? locradar : new mapboxgl.Map({
     container: 'radar-amenities', // container id
     style: legacyMaps ? echoStyle : mapStyle,
     center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
@@ -513,6 +455,117 @@ async function initializeRadars() {
     locradarAmenitiesTrans.setPaintProperty('cb-2019-us-state-20m-nocoast-7m1rrd', "line-width", 7)
     locradarAmenitiesTrans.setPaintProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', "line-width", 6)
   });
+  localRadarReady = styleLoaded(radarEchoes);
+  return localRadarReady;
+}
+function removeLocalRadarMaps() {
+  //a phone's echoes and amenities can be the basemap itself
+  new Set([locradar, radarEchoes, locradarAmenities, locradarAmenitiesTrans]).forEach(function (map) { map.remove() });
+  locradar = radarEchoes = locradarAmenities = locradarAmenitiesTrans = undefined;
+}
+
+//radar/satellite: the basemap, the echoes, and the boundaries over them
+var satReady;
+function createSatMaps() {
+  if (satmap) { return satReady }
+  mapboxgl.accessToken = map_key
+  satmap = new mapboxgl.Map({
+    ...legacyLabelOptions('radar'),
+    container: 'sat-basemap', // container id
+    style: legacyMaps ? legacyStyle : mapStyle,
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
+    zoom: satZoom,
+    trackResize: false,
+    projection: {
+      name: 'lambertConformalConic',
+      center: [-100, 45],
+      parallels: [30, 30]
+    },
+  });
+  satmap.on('load', function () {
+    if (legacyMaps) { setupLegacyBase(satmap); return }
+    satmap.setLayoutProperty('background', 'visibility', 'visible');//ocean
+    satmap.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
+    satmap.setLayoutProperty('hawaii regional', 'visibility', 'visible');//hawaii lambert
+    satmap.setLayoutProperty('alaska', 'visibility', 'visible');//alaska
+    satmap.setLayoutProperty('conus merc', 'visibility', 'none');//conus mercator
+    satmap.setLayoutProperty('conus sat', 'visibility', 'visible');//conus lambert
+    satmap.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'none');//county lines
+    satmap.setLayoutProperty('cb-2019-us-state-20m-nocoast-7m1rrd', 'visibility', 'none');//state lines
+    satmap.setLayoutProperty('i2-coastlines-conus-ak-hi-06wtga', 'visibility', 'none');//coastlines
+    satmap.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'none');//black roads
+    satmap.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'none');//gray roads
+    satmap.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (2)', 'visibility', 'none');
+    satmap.setLayoutProperty('place-label', 'visibility', 'none');
+    satmap.setLayoutProperty('place-label copy', 'visibility', 'none');
+    satmap.setLayoutProperty('airport-label', 'visibility', 'none');
+    satmap.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (4)', 'visibility', 'none');
+    satmap.setLayoutProperty('country-boundaries', 'visibility', 'none');
+  });
+
+  satEchoes = phoneMaps ? satmap : new mapboxgl.Map({
+    container: 'sat-echoes', // container id
+    style: echoStyle,
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
+    zoom: satZoom,
+    trackResize: false,
+    projection: {
+      name: 'lambertConformalConic',
+      center: [-100, 45],
+      parallels: [30, 30]
+    },
+  });
+  satEchoes.on('load', function () {
+  });
+
+  satAmenities = new mapboxgl.Map({
+    ...legacyLabelOptions('radar'),
+    container: 'sat-amenities', // container id
+    style: legacyMaps ? legacyStyle : mapStyle,
+    center: [systemSettings.mainCity.lon, systemSettings.mainCity.lat],
+    zoom: satZoom,
+    trackResize: false,
+    projection: {
+      name: 'lambertConformalConic',
+      center: [-100, 45],
+      parallels: [30, 30]
+    },
+  });
+
+  satAmenities.on('load', function () {
+    if (legacyMaps) { setupLegacyOverlay(satAmenities); return }
+    satAmenities.setLayoutProperty('background', 'visibility', 'none');//ocean
+    satAmenities.setLayoutProperty('hawaii local', 'visibility', 'none');//alaska mercator
+    satAmenities.setLayoutProperty('hawaii regional', 'visibility', 'none');//hawaii lambert
+    satAmenities.setLayoutProperty('alaska', 'visibility', 'none');//alaska
+    satAmenities.setLayoutProperty('conus merc', 'visibility', 'none');//conus mercator
+    satAmenities.setLayoutProperty('conus sat', 'visibility', 'none');//conus lambert
+    satAmenities.setLayoutProperty('i2-county-lines-conus-ak-hi-81h5x4', 'visibility', 'none');//county lines
+    satAmenities.setLayoutProperty('cb-2019-us-state-20m-nocoast-7m1rrd', 'visibility', 'visible');//state lines
+    satAmenities.setPaintProperty('cb-2019-us-state-20m-nocoast-7m1rrd', "line-width", 4)
+    satAmenities.setLayoutProperty('i2-coastlines-conus-ak-hi-06wtga', 'visibility', 'visible');//coastlines
+    satAmenities.setPaintProperty('i2-coastlines-conus-ak-hi-06wtga', "line-width", 4)
+    satAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3', 'visibility', 'none');//black roads
+    satAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 copy', 'visibility', 'none');//gray roads
+    satAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (2)', 'visibility', 'none');
+    satAmenities.setLayoutProperty('place-label', 'visibility', 'none');
+    satAmenities.setLayoutProperty('place-label copy', 'visibility', 'none');
+    satAmenities.setLayoutProperty('airport-label', 'visibility', 'none');
+    satAmenities.setLayoutProperty('i2-road-vectors-conus-ak-hi-4r25d3 (4)', 'visibility', 'none');
+    satAmenities.setLayoutProperty('country-boundaries', 'visibility', 'visible');
+    satAmenities.setPaintProperty('country-boundaries', "line-width", 4)
+  });
+  satReady = styleLoaded(satEchoes);
+  return satReady;
+}
+function removeSatMaps() {
+  new Set([satmap, satEchoes, satAmenities]).forEach(function (map) { map.remove() });
+  satmap = satEchoes = satAmenities = undefined;
+}
+
+function createTrafficMap() {
+  if (trafficMap) { return }
+  mapboxgl.accessToken = map_key
   try {
     trafficMap = new mapboxgl.Map({
       container: 'trafmap',
@@ -529,6 +582,22 @@ async function initializeRadars() {
     weatherData.trafficMapUnavailable = true
   }  
 }
+function removeTrafficMap() {
+  trafficMap.remove();
+  trafficMap = undefined;
+}
+
+//phones play the radar loops with fewer frames, and the doppler's and mini radar's tiles at half the detail (a phone's
+//small screen doesn't show more): every frame's tiles stay in memory while the loop plays, and at full count and
+//detail that's several hundred MB, which runs a phone out of memory. phoneMaps is in main.js
+var phoneFrameStep = { doppler: 3, sat: 2, mini: 3 };
+//every step-th frame, on fixed times rather than counted back from the latest: then a refresh only adds the newest
+//frame, instead of picking a whole new set of frames to load every time one comes out
+function phoneFrames(frames, step) {
+  if (!phoneMaps || frames.length < 2) { return frames }
+  var spacing = frames[1].ts - frames[0].ts;
+  return frames.filter(function (frame) { return Math.round(frame.ts / spacing) % step == 0 });
+}
 
 //LOCAL DOPPLER RADAR
 async function getLocRadarTimestamps() {
@@ -536,7 +605,7 @@ async function getLocRadarTimestamps() {
   var frameCount = 36;
   const response = await fetch(`https://api.weather.com/v3/TileServer/series/productSet/PPAcore?filter=twcRadarMosaic&apiKey=${api_key}`);
   const data = await response.json();
-  locRadarTimestamps = data.seriesInfo.twcRadarMosaic.series.sort((a, b) => a.ts - b.ts).slice(-frameCount)
+  locRadarTimestamps = phoneFrames(data.seriesInfo.twcRadarMosaic.series.sort((a, b) => a.ts - b.ts).slice(-frameCount), phoneFrameStep.doppler)
 }
 async function addLocRadarLayers() {
   for (let tstamp of locRadarTimestamps) {
@@ -545,7 +614,8 @@ async function addLocRadarLayers() {
       radarEchoes.addSource(`radar_${timestamp}`, {
         type: "raster",
         tiles: [`https://api.weather.com/v3/TileServer/tile/twcRadarMosaic?ts=${timestamp}&xyz={x}:{y}:{z}&apiKey=${api_key}`],
-        tileSize: 512,
+        //1024 has mapbox draw each 512 pixel tile twice as big, from the next zoom out: a quarter of the tiles
+        tileSize: phoneMaps ? 1024 : 512,
         minzoom: 5,
         maxzoom: 12
       });
@@ -583,7 +653,8 @@ async function animateLocalRadar() {
       if (frameidx == validLayers.length - 1) {
         clearInterval(pass);
       }
-    }, 90)
+    //a phone's fewer frames each show longer, so the loop takes as long
+    }, phoneMaps ? 90 * phoneFrameStep.doppler : 90)
   }
   playLoop();
   locRadarAnimation = setInterval(playLoop, 4000);
@@ -620,7 +691,7 @@ async function getSatRadarTimestamps() {
   var frameCount = 60;
   const response = await fetch(`https://api.weather.com/v3/TileServer/series/productSet/PPAcore?filter=satrad&apiKey=${api_key}`);
   const data = await response.json();
-  satRadarTimestamps = data.seriesInfo.satrad.series.sort((a, b) => a.ts - b.ts).slice(-frameCount)
+  satRadarTimestamps = phoneFrames(data.seriesInfo.satrad.series.sort((a, b) => a.ts - b.ts).slice(-frameCount), phoneFrameStep.sat)
 }
 async function addSatRadarLayers() {
   for (let tstamp of satRadarTimestamps) {
@@ -704,7 +775,7 @@ async function getMiniRadarTimestamps() {
   var frameCount = 36;
   const response = await fetch(`https://api.weather.com/v3/TileServer/series/productSet/PPAcore?filter=twcRadarMosaic&apiKey=${api_key}`);
   const data = await response.json();
-  miniRadarTimestamps = data.seriesInfo.twcRadarMosaic.series.sort((a, b) => a.ts - b.ts).slice(-frameCount)
+  miniRadarTimestamps = phoneFrames(data.seriesInfo.twcRadarMosaic.series.sort((a, b) => a.ts - b.ts).slice(-frameCount), phoneFrameStep.mini)
 }
 async function addMiniRadarLayers() {
   for (let tstamp of miniRadarTimestamps) {
@@ -713,7 +784,7 @@ async function addMiniRadarLayers() {
       miniEchoes.addSource(`radar_${timestamp}`, {
         type: "raster",
         tiles: [`https://api.weather.com/v3/TileServer/tile/twcRadarMosaic?ts=${timestamp}&xyz={x}:{y}:{z}&apiKey=${api_key}`],
-        tileSize: 512,
+        tileSize: phoneMaps ? 1024 : 512,
         minzoom: 5,
         maxzoom: 12
       });
@@ -730,7 +801,8 @@ async function addMiniRadarLayers() {
   }
 }
 async function animateMiniRadar() {
-  if(miniradarani != undefined && miniRadarAnimation != undefined){
+  //miniRadarAnimation is never set, so this never stopped a loop still running from an earlier start; on phones it does
+  if(phoneMaps || (miniradarani != undefined && miniRadarAnimation != undefined)){
     clearInterval(miniradarani);
     clearInterval(miniRadarAnimation);
   }
@@ -740,6 +812,11 @@ async function animateMiniRadar() {
   }
 
   validLayers.forEach((layerId) => miniEchoes.setLayoutProperty(layerId, "visibility", "none"));
+  //and on phones any frame a refresh has dropped, which a loop stopped partway can leave showing
+  if (phoneMaps) {
+    miniEchoes.getStyle().layers.filter((layer) => layer.id.startsWith("radarlayer_"))
+      .forEach((layer) => miniEchoes.setLayoutProperty(layer.id, "visibility", "none"));
+  }
   miniEchoes.setLayoutProperty(validLayers[0], "visibility", "visible");
   let frameidx = 0;
   miniradarani = setInterval(() => {
@@ -750,7 +827,7 @@ async function animateMiniRadar() {
     if (frameidx == validLayers.length - 1) {
       clearInterval(miniradarani);
     }
-  }, 144)
+  }, phoneMaps ? 144 * phoneFrameStep.mini : 144)
   // miniRadarAnimation = setInterval(() => {
   //   miniradarani = setInterval(() => {
   //     miniEchoes.setLayoutProperty(validLayers[frameidx], "visibility", "none");
@@ -775,8 +852,24 @@ async function cleanupMiniRadarLayers() {
     })
 }
 
+//the l-bar and a new segment can both start the mini radar at once. on phones the second waits for the first, since
+//two loading and looping together crashed an iPhone
+var miniRadarStarting;
 async function startMiniRadar(newSlide) {
+  if (!phoneMaps) { return startMiniRadarNow(newSlide) }
+  if (!miniRadarStarting) {
+    miniRadarStarting = startMiniRadarNow(newSlide).finally(function () { miniRadarStarting = null });
+  }
+  return miniRadarStarting;
+}
+async function startMiniRadarNow(newSlide) {
   try {
+    //startup doesn't preload a phone's mini radar, so the first start loads the frames
+    if (phoneMaps) {
+      await styleLoaded(miniEchoes)
+      await cardMapSettling
+      if (!miniRadarTimestamps) { newSlide = true }
+    }
     if(newSlide){
       await cleanupMiniRadarLayers();
       await getMiniRadarTimestamps();
@@ -793,6 +886,7 @@ async function startMiniRadar(newSlide) {
   
 }
 async function stopMiniRadar() {
+  if (!miniRadarTimestamps) { return }
   var validLayers = miniRadarTimestamps.map((tss) => `radarlayer_${tss.ts}`);
   clearInterval(miniradarani);
   //clearInterval(miniRadarAnimation);
@@ -802,31 +896,39 @@ async function stopMiniRadar() {
 
 //i would recommend stopping this 3 seconds before the sim starts
 async function preloadRadars(){
-  try {
-    await startLocalRadar();
-  } catch (error) {
-    console.log("startLocalRadar Error")
-    console.error(error)
-    weatherData.dopplerUnavailable = true
+  //on phones the doppler and satellite maps don't exist until their cards show
+  if (!phoneMaps) {
+    try {
+      await startLocalRadar();
+    } catch (error) {
+      console.log("startLocalRadar Error")
+      console.error(error)
+      weatherData.dopplerUnavailable = true
+    }
+
+    try {
+      await startSatRadar();
+    } catch (error) {
+      console.log("startSatRadar Error")
+      console.error(error)
+      weatherData.satUnavailable = true
+    }
   }
 
-  try {
-    await startSatRadar();
-  } catch (error) {
-    console.log("startSatRadar Error")
-    console.error(error)
-    weatherData.satUnavailable = true
-  }
-
-  try {
-    await startMiniRadar(true);
-  } catch (error) {
-    console.log("startMiniRadar Error")
-    console.error(error)
-    lBarData.radarUnavailable = true
+  //a phone's mini radar loads when the l-bar first shows it, so startup doesn't wait on its basemap
+  if (!phoneMaps) {
+    try {
+      await startMiniRadar(true);
+    } catch (error) {
+      console.log("startMiniRadar Error")
+      console.error(error)
+      lBarData.radarUnavailable = true
+    }
   }
 
   stopMiniRadar();
-  stopLocalRadar();
-  stopSatRadar();
+  if (!phoneMaps) {
+    stopLocalRadar();
+    stopSatRadar();
+  }
 }

@@ -5,6 +5,8 @@
 //  #card=dopplerRadar&package=extralocal pick the package when the card is in more than one
 //  #card=snowfallForecast&package=ski   a package missing from the config is added for that page load
 //  #card=dopplerRadar&hold               keep replaying that card instead of moving on
+//  #segment=5                            start at the beginning of the lineup's sixth package (counting from 0);
+//                                        phones reload onto the next one this way
 //
 //console:
 //  weatherscan.cards()                   list the lineup and every card in it
@@ -15,6 +17,7 @@
 
 var cardJump = {
   start: null,         //{card, package} from the URL, applied once at kickoff
+  startSegment: null,  //lineup index from #segment, applied once at kickoff
   pendingIdx: null,    //same-package jump waiting for the current card to finish
   hold: false,
   firstSegment: false  //starting mid-lineup still needs the mini radar started
@@ -26,6 +29,7 @@ var cardJump = {
     cardJump.start = { card: params.get("card"), package: params.get("package") };
   }
   cardJump.hold = params.has("hold");
+  if (params.get("segment")) { cardJump.startSegment = Number(params.get("segment")) }
 })();
 
 //#card=...&package=ski adds that package for this page load when the config doesn't include it,
@@ -62,6 +66,13 @@ function findCard(card, packageName) {
 
 //called by slideKickOff before the first package is set up
 function applyStartCard() {
+  var segment = cardJump.startSegment;
+  cardJump.startSegment = null;
+  if (segment > 0 && segment < slideSettings.order[orderidx].slideLineup.length) {
+    gidx = segment;
+    idx = 0;
+    cardJump.firstSegment = true;
+  }
   if (!cardJump.start) { return }
   var found = findCard(cardJump.start.card, cardJump.start.package);
   if (!found) {

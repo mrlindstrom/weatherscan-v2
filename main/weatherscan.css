@@ -1293,6 +1293,11 @@ img#mist-logo {
 /*i am so sorry i had to use the beta code, but this is so unbelievably hard and annoying t code i had no choice
 its not 1 for 1 code using so i mean i guess its aight
 -Joe*/
+/*phones (phoneMaps in main.js) keep the intro circles still: each turning, masked circle is its own graphics layer
+  bigger than the stage, and an iPhone ran out of memory starting an intro*/
+.phone-maps .circlegroup {
+  animation: none !important;
+}
 @keyframes circle-one-movement {
   100% { transform: rotate(-30deg);}
 }

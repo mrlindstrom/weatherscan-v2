@@ -69,7 +69,8 @@ var qpePalette = [
 ];
 var qpeBandColors = [null, "#46e346", "#208420", "#c8c832", "#e61e1e", "#4f1309"];
 
-function initializeCardMaps() {
+//cards: on phones, only the cards whose data this map loads (phoneCardMapFor)
+function initializeCardMaps(cards) {
   cardMapDiv = document.createElement('div');
   cardMapDiv.id = 'card-map';
   cardMapDiv.style.cssText = 'position:absolute;width:1620px;height:1080px;';
@@ -105,8 +106,13 @@ function initializeCardMaps() {
     cardMap.addImage('sct-streak', streak.image, { pixelRatio: streak.pixelRatio });
     //the legend box gets the basemap's land color behind the tint, like it sits on the map
     $(".travel-weather .sct.box").css({ "background-color": "#46553e", "background-image": "url(" + sct.url + ")", "background-size": (sct.size * 0.7) + "px " + (sct.size * 0.7) + "px" });
-    loadCardMapData();
-    setInterval(loadCardMapData, cardMapRefresh);
+    if (phoneMaps) {
+      //a phone's map lasts one segment, and is made again with fresh data for the next
+      cards.forEach(function (card) { cardMapLoaders[card]() });
+    } else {
+      loadCardMapData();
+      setInterval(loadCardMapData, cardMapRefresh);
+    }
     if (activeMapCard) { showCardMap(activeMapCard) }
   });
 }
@@ -169,6 +175,39 @@ function loadCardMapData() {
   if (packages.includes("ski")) { loadSnowfallForecast() }
   if (packages.includes("beach")) { loadWaterTemps() }
 }
+
+//phones only have the card map while a segment with map cards is showing (from its intro, so the data is in by the
+//time its first map card shows), with only those cards' data: kept the whole time with every package's data, it ran
+//an iPhone out of memory. called as each card starts (showSlides), with the segment's cards. phoneMaps is in main.js
+var cardMapLoaders = {
+  estimatedPrecip: loadEstimatedPrecip, precipForecast: loadPrecipForecast, droughtMonitor: loadDroughtMonitor,
+  frostFreeze: loadFrostFreeze, travelWeather: loadTravelWeather, golfIndex: loadGolfIndex,
+  snowfallForecast: loadSnowfallForecast, waterTemps: loadWaterTemps
+};
+var phoneCardMapCards = "";
+function phoneCardMapFor(slides) {
+  var cards = slides.map(function (slide) { return slide.function }).filter(function (card) { return mapCards[card] });
+  if (cards.join() == phoneCardMapCards) { return }
+  phoneCardMapCards = cards.join();
+  if (cardMap) {
+    cardMap.remove();
+    cardMapDiv.remove();
+    cardMap = undefined;
+    cardMapReady = false;
+    activeMapCard = null;
+  }
+  if (cards.length) {
+    initializeCardMaps(cards);
+    //the mini radar holds off its new frames until this map has drawn (radar.js): both arriving at once at the
+    //start of a segment crashed an iPhone. a map in a hidden card may not draw until it shows, so not past 10 seconds
+    var map = cardMap;
+    cardMapSettling = new Promise(function (resolve) {
+      map.once('idle', resolve);
+      setTimeout(resolve, 10000);
+    });
+  }
+}
+var cardMapSettling = Promise.resolve();
 
 //the card currently showing, so data that arrives later still lands on it
 var activeMapCard = null;
