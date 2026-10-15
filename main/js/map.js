@@ -236,17 +236,21 @@ function trafficBadgeURL(shield, ref) {
   return trafficBadgeCache[key];
 }
 
-//sign for a traffic flow route's routeIcon: images/roadSigns/<name>.png when there is one, otherwise names
+//sign for a traffic flow route's routeIcon: images/roadSigns/<name>.png or .svg when there is one, otherwise names
 //like interstate_95, usRoute_66 or stateRoute_1 are drawn on the blank signs, so any city's routes get one
 var roadSignPatterns = { interstate: 'us-interstate', usRoute: 'us-highway', stateRoute: 'circle-white' };
-async function roadSignURL(name) {
-  var file = "images/roadSigns/" + name + ".png";
-  var exists = await new Promise(function (resolve) {
+function roadSignExists(file) {
+  return new Promise(function (resolve) {
     var img = new Image();
     img.onload = function () { resolve(true) };
     img.onerror = function () { resolve(false) };
     img.src = file;
   });
+}
+async function roadSignURL(name) {
+  var file = "images/roadSigns/" + name + ".png";
+  var exists = await roadSignExists(file);
+  if (!exists && await roadSignExists("images/roadSigns/" + name + ".svg")) { return "images/roadSigns/" + name + ".svg" }
   var match = /^(interstate|usRoute|stateRoute)_([0-9A-Za-z]+)$/.exec(name);
   if (exists || !match) { return file }
   await trafficBadgeBases;
