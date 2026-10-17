@@ -35,13 +35,12 @@ Need support beyond the scope of this README? A guide for configuring this simul
    - `appearanceSettings.mapLook` picks the maps' look. `"legacy"` (the default) is the original web simulator's map, with real city labels. `"intellistar"` is v2's IntelliStar basemap: IntelliStar artwork and lines on the radar and the data cards, with the radar's city names placed by the simulator as in v2. Its Alaska and Hawaii artwork no longer loads, so those areas have no basemap with that look.
    - `appearanceSettings.intellistarTiles` can name a folder holding the IntelliStar artwork as map tiles (`<zoom>/<x>/<y>.png`, 256px, zooms 0–10), for example `"C:/my-tiles"` or a path relative to the simulator's folder. The `intellistar` look then draws its artwork from that folder instead of the online tileset. Leave it blank (`""`) to use the online one. [intellistar-basemap](https://github.com/mrlindstrom/intellistar-basemap) has tools to save the artwork into such a folder and to paint the Alaska and Hawaii artwork the online tileset never had. The server reads this setting when it starts, so restart it after changing it.
 4. If you want the traffic segment, put a *TomTom* API key in `traf_key` (line 7). Keys are free at [developer.tomtom.com](https://developer.tomtom.com) with no credit card; the free plan refuses requests past its daily allowance rather than billing, and the simulator stops itself at 2,000 requests a day. Again, this is optional and only if you want the traffic segment - leaving it blank will erase the traffic segment from your lineup cleanly.
-   - Each route in `traffic.routes` names its sign in `routeIcon`. That can be any image in `main/images/roadSigns` (without `.png`), or a name like `interstate_95`, `usRoute_66` or `stateRoute_1`, which is drawn on the matching blank sign when there's no image by that name.
-5. The beach package's water temperature map reads NOAA CoastWatch, which doesn't allow browser requests from other sites. To show it, set `corsProxy` (line 10) to the URL of a [CORS Anywhere](https://github.com/Rob--W/cors-anywhere) instance you run. Left blank, that one card shows as unavailable.
-6. The ski package only plays during `ski.season`, given as month-day dates (`"start":"11-15", "end":"04-15"`); the range can wrap past New Year. Remove `season` or leave its dates blank to play ski all year.
-7. Save your changes to `yourConfig.json` and close it.
-8. In the terminal / command prompt within the main directory, run `npm install --production`. This will install all dependencies required to run the simulator
-9. In the terminal / command prompt within the main directory, run `npm start`. This will spin up a local web server on port 3000 by default. To use another port, put a line like `PORT=3003` in a `.env` file next to `app.js` (it's gitignored), or set the `PORT` environment variable.
-10. Visit http://localhost:3000 to view the simulator.
+   - Each route in `traffic.routes` names its sign in `routeIcon`. That can be any `.png` or `.svg` image in `main/images/roadSigns` (without the extension), or a name like `interstate_95`, `usRoute_66` or `stateRoute_1`, which is drawn on the matching blank sign when there's no image by that name.
+5. The ski package only plays during `ski.season`, given as month-day dates (`"start":"11-15", "end":"04-15"`); the range can wrap past New Year. Remove `season` or leave its dates blank to play ski all year.
+6. Save your changes to `yourConfig.json` and close it.
+7. In the terminal / command prompt within the main directory, run `npm install --production`. This will install all dependencies required to run the simulator
+8. In the terminal / command prompt within the main directory, run `npm start`. This will spin up a local web server on port 3000 by default. To use another port, put a line like `PORT=3003` in a `.env` file next to `app.js` (it's gitignored), or set the `PORT` environment variable.
+9. Visit http://localhost:3000 to view the simulator.
 
 # Jumping to and holding cards
 
@@ -153,7 +152,7 @@ Use these names with `#card=` and `weatherscan.jump()`. A package only plays whe
 | | `skiTip` | A ski tip. |
 | `beach` | `beachIntro` | Beach package title card. |
 | | `surfReport` | Waves, wind and water temperature from the nearest buoy. |
-| | `waterTemps` | Regional map of sea surface temperatures (needs `corsProxy`). |
+| | `waterTemps` | Regional map of sea surface temperatures (the server fetches it from NOAA CoastWatch and keeps it for a few hours). |
 | | `coastalForecast` | NWS coastal waters forecast for the nearest marine zone. |
 | | `tides` | Tide times at the two nearest tide stations. |
 | `severeA`, `severeB`, `severe2` | `severeMessage` and others | Alert packages that play only during severe weather alerts. |

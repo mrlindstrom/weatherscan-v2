@@ -43,9 +43,8 @@ var golfColors = ["#5a3f1e", "#745f1e", "#8e7f1e", "#a89f1e", "#c2c31d", "#a7c51
 var snowGrid = { cols: 16, rows: 10 };
 var snowDayparts = 6;
 var snowBands = [[12, "#9A3CFF"], [6, "#DAA5FF"], [3, "#E6E6E6"], [1, "#AAAAAA"]];
-//water temps: NOAA CoastWatch MUR sea surface temperature. that server sends no CORS headers,
-//so it goes through a CORS Anywhere proxy set by "corsProxy" in the config (the card stays unavailable without one)
-var sstURL = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.json";
+//water temps: NOAA CoastWatch MUR sea surface temperature, fetched and kept by the server (/water-temps in app.js),
+//since CoastWatch sends no CORS headers
 var waterTempBands = [[80, "#9A1000"], [70, "#DC9600"], [60, "#C1BE3C"], [50, "#635D65"], [40, "#3459C5"], [-100, "#5AAAFF"]];
 
 //NWS river forecast center 24 hour precip estimate (exported as an image and recolored to the legend)
@@ -788,18 +787,10 @@ async function loadSnowfallForecast() {
 }
 
 async function loadWaterTemps() {
-  var corsProxyURL = systemSettings.corsProxy;
-  if (!corsProxyURL) {
-    console.info("water temps map: no corsProxy set in the config");
-    weatherData.waterTempsMapUnavailable = true;
-    return;
-  }
-  if (!corsProxyURL.endsWith("/")) { corsProxyURL += "/" }
   try {
     var b = cardMapBounds();
-    //latest MUR satellite analysis (0.01 degree), thinned to every 20th point
-    var query = "analysed_sst[(last)][(" + b.south.toFixed(2) + "):20:(" + b.north.toFixed(2) + ")][(" + b.west.toFixed(2) + "):20:(" + b.east.toFixed(2) + ")]";
-    var url = corsProxyURL + sstURL + "?" + encodeURIComponent(query);
+    //the latest MUR satellite analysis (0.01 degree), thinned to every 20th point
+    var url = "water-temps?" + new URLSearchParams({ south: b.south.toFixed(2), north: b.north.toFixed(2), west: b.west.toFixed(2), east: b.east.toFixed(2) });
     var rows = await fetchSSTRows(url);
     //rows are latitude ascending, longitude inside each latitude
     var lats = [...new Set(rows.map(function (row) { return row[1] }))].sort(function (a, c) { return c - a });
@@ -1041,8 +1032,9 @@ async function fetchSSTRows(url) {
     if (attempt > 0) { await new Promise(function (resolve) { setTimeout(resolve, 5000) }) }
     try {
       var text = await (await fetch(url)).text();
-      if (!text.trim().startsWith("{")) { throw new Error("ERDDAP: " + text.slice(0, 200)) }
-      return JSON.parse(text).table.rows;
+      var data = JSON.parse(text);
+      if (!data.table) { throw new Error("water temps: " + (data.error || text.slice(0, 200))) }
+      return data.table.rows;
     } catch (error) {
       lastError = error;
       console.warn("water temps attempt " + (attempt + 1) + " failed", error.message);
